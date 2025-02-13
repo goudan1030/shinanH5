@@ -52,8 +52,11 @@
 import { ref } from 'vue'
 import { useRouter } from 'vue-router'
 import { Icon as VanIcon } from 'vant'
+import { Dialog } from 'antd-mobile'
+import { useAuthStore } from '@/stores/auth'
 
 const router = useRouter()
+const authStore = useAuthStore()
 const activeTab = ref('home')
 
 const leftTabs = [
@@ -75,9 +78,10 @@ const handleTabClick = (key: string) => {
   }
 }
 
-const handleAddClick = () => {
-  // 处理中间按钮点击
-  console.log('Add button clicked')
+const handleAddClick = async () => {
+  // TODO: 后续添加登录状态判断
+  // 直接跳转到用户信息登记页面
+  router.push('/register-info')
 }
 </script>
 

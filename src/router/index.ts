@@ -36,7 +36,8 @@ const router = createRouter({
     {
       path: '/register-info',
       name: 'registerInfo',
-      component: RegisterInfoView
+      component: () => import('@/views/RegisterInfoView.vue'),
+      meta: { title: '信息登记' }
     },
     {
       path: '/login',

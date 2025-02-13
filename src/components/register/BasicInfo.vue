@@ -1,76 +1,73 @@
 <template>
   <div class="basic-info">
-    <adm-form
-      :model="formData"
-      @submit="onSubmit"
-    >
-      <adm-form-item
+    <Form>
+      <Form.Item
         label="昵称"
         name="nickname"
         :rules="[{ required: true, message: '请填写昵称' }]"
       >
-        <adm-input v-model="formData.nickname" placeholder="请输入昵称" />
-      </adm-form-item>
+        <Input v-model="formData.nickname" placeholder="请输入昵称" />
+      </Form.Item>
 
-      <adm-form-item
+      <Form.Item
         label="性别"
         name="gender"
         :rules="[{ required: true, message: '请选择性别' }]"
       >
-        <adm-radio-group v-model="formData.gender">
-          <adm-radio value="male">男</adm-radio>
-          <adm-radio value="female">女</adm-radio>
-        </adm-radio-group>
-      </adm-form-item>
+        <Radio.Group v-model="formData.gender">
+          <Radio value="male">男</Radio>
+          <Radio value="female">女</Radio>
+        </Radio.Group>
+      </Form.Item>
 
-      <adm-form-item
+      <Form.Item
         label="出生日期"
         name="birthDate"
         :rules="[{ required: true, message: '请选择出生日期' }]"
       >
-        <adm-date-picker
+        <DatePicker
           v-model="formData.birthDate"
           :min="minDate"
           :max="maxDate"
           @confirm="onConfirmDate"
         >
           <template #default="{ open }">
-            <adm-input
+            <Input
               readonly
               :value="formData.birthDate"
               placeholder="请选择出生日期"
               @click="open"
             />
           </template>
-        </adm-date-picker>
-      </adm-form-item>
+        </DatePicker>
+      </Form.Item>
 
-      <adm-form-item
+      <Form.Item
         label="所在城市"
         name="city"
         :rules="[{ required: true, message: '请选择所在城市' }]"
       >
-        <adm-cascader
+        <Cascader
           v-model="formData.city"
           :options="cityOptions"
           placeholder="请选择所在城市"
         >
           <template #default="{ open }">
-            <adm-input
+            <Input
               readonly
               :value="formData.cityText"
               placeholder="请选择所在城市"
               @click="open"
             />
           </template>
-        </adm-cascader>
-      </adm-form-item>
+        </Cascader>
+      </Form.Item>
 
       <!-- 底部按钮 -->
       <div class="form-buttons">
-        <adm-button block type="submit" color="primary">下一步</adm-button>
+        <Button block type="submit" color="primary">下一步</Button>
       </div>
-    </adm-form>
+    </Form>
   </div>
 </template>
 

@@ -1,9 +1,10 @@
 <template>
   <div class="register-page">
+    <NavBar @back="handleBack">信息登记</NavBar>
     <!-- 顶部步骤条 -->
-    <adm-steps :current="currentStep">
-      <adm-step v-for="(step, index) in steps" :key="index" :title="step.text" />
-    </adm-steps>
+    <Steps :current="currentStep">
+      <Steps.Step v-for="(step, index) in steps" :key="index" :title="step.text" />
+    </Steps>
     
     <!-- 步骤内容区域 -->
     <div class="step-content">
@@ -18,11 +19,14 @@
 
 <script setup lang="ts">
 import { ref, computed } from 'vue'
-import { Steps } from 'antd-mobile'
+import { Steps, NavBar } from 'antd-mobile'
+import { useRouter } from 'vue-router'
 import BasicInfo from '@/components/register/BasicInfo.vue'
 import DetailInfo from '@/components/register/DetailInfo.vue'
 import PhotoUpload from '@/components/register/PhotoUpload.vue'
 import Preferences from '@/components/register/Preferences.vue'
+
+const router = useRouter()
 
 const AdmSteps = Steps
 const AdmStep = Steps.Step
@@ -65,6 +69,11 @@ const handlePrev = () => {
     currentStep.value--
   }
 }
+
+// 添加返回处理函数
+const handleBack = () => {
+  router.back()
+}
 </script>
 
 <style scoped>
@@ -75,6 +84,13 @@ const handlePrev = () => {
 }
 
 .step-content {
-  margin-top: 24px;
+  margin-top: 16px;
+  padding: 0 16px;
+}
+
+:deep(.adm-steps) {
+  padding: 24px 16px;
+  background: #fff;
+  margin-top: 12px;
 }
 </style> 

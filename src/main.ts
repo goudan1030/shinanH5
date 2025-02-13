@@ -7,6 +7,7 @@ import router from './router'
 
 // 导入 antd-mobile 样式
 import 'antd-mobile/es/global'
+import 'antd-mobile/bundle/style.css'
 
 const app = createApp(App)
 
