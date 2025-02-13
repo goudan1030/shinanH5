@@ -1,0 +1,80 @@
+<template>
+  <div class="register-page">
+    <!-- 顶部步骤条 -->
+    <adm-steps :current="currentStep">
+      <adm-step v-for="(step, index) in steps" :key="index" :title="step.text" />
+    </adm-steps>
+    
+    <!-- 步骤内容区域 -->
+    <div class="step-content">
+      <component 
+        :is="currentComponent" 
+        @next="handleNext"
+        @prev="handlePrev"
+      />
+    </div>
+  </div>
+</template>
+
+<script setup lang="ts">
+import { ref, computed } from 'vue'
+import { Steps } from 'antd-mobile'
+import BasicInfo from '@/components/register/BasicInfo.vue'
+import DetailInfo from '@/components/register/DetailInfo.vue'
+import PhotoUpload from '@/components/register/PhotoUpload.vue'
+import Preferences from '@/components/register/Preferences.vue'
+
+const AdmSteps = Steps
+const AdmStep = Steps.Step
+
+const steps = [
+  { text: '基本信息' },
+  { text: '详细资料' },
+  { text: '照片上传' },
+  { text: '择偶意向' }
+]
+
+const currentStep = ref(0)
+
+// 根据当前步骤返回对应的组件
+const currentComponent = computed(() => {
+  switch (currentStep.value) {
+    case 0:
+      return BasicInfo
+    case 1:
+      return DetailInfo
+    case 2:
+      return PhotoUpload
+    case 3:
+      return Preferences
+    default:
+      return BasicInfo
+  }
+})
+
+// 处理下一步
+const handleNext = () => {
+  if (currentStep.value < steps.length - 1) {
+    currentStep.value++
+  }
+}
+
+// 处理上一步
+const handlePrev = () => {
+  if (currentStep.value > 0) {
+    currentStep.value--
+  }
+}
+</script>
+
+<style scoped>
+.register-page {
+  min-height: 100vh;
+  background: #F7F8FC;
+  padding: 24px;
+}
+
+.step-content {
+  margin-top: 24px;
+}
+</style> 
