@@ -49,15 +49,46 @@
 </template>
 
 <script setup lang="ts">
-import { ref } from 'vue'
-import { useRouter } from 'vue-router'
+import { ref, h, onMounted, watch } from 'vue'
+import { useRouter, useRoute } from 'vue-router'
 import { Icon as VanIcon } from 'vant'
-import { Dialog } from 'antd-mobile'
+import {
+  TabBar as TTabBar,
+  TabBarItem as TTabBarItem,
+} from 'tdesign-mobile-vue'
+import {
+  HomeIcon,
+  ChatIcon,
+  NotificationIcon,
+  UserIcon,
+} from 'tdesign-icons-vue-next'
 import { useAuthStore } from '@/stores/auth'
 
 const router = useRouter()
+const route = useRoute()
 const authStore = useAuthStore()
 const activeTab = ref('home')
+
+// 根据当前路由设置激活的标签
+const syncActiveTab = () => {
+  const path = route.path
+  if (path === '/') {
+    activeTab.value = 'home'
+  } else {
+    // 移除开头的 '/' 得到路由名称
+    activeTab.value = path.slice(1)
+  }
+}
+
+// 组件挂载时同步一次
+onMounted(() => {
+  syncActiveTab()
+})
+
+// 监听路由变化
+watch(() => route.path, () => {
+  syncActiveTab()
+})
 
 const leftTabs = [
   { key: 'home', title: '首页', icon: 'home-o' },
@@ -83,6 +114,16 @@ const handleAddClick = async () => {
   // 直接跳转到用户信息登记页面
   router.push('/register-info')
 }
+
+const handleTabChange = (value: string) => {
+  if (value === activeTab.value) return
+  
+  if (value === 'home') {
+    router.push('/')
+  } else {
+    router.push(`/${value}`)
+  }
+}
 </script>
 
 <style scoped>
@@ -90,11 +131,16 @@ const handleAddClick = async () => {
   min-height: 100vh;
   display: flex;
   flex-direction: column;
+  background: var(--app-background);
 }
 
 .page-content {
   flex: 1;
-  padding-bottom: 50px;
+  padding-top: 0;
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+  position: relative;
+  z-index: 1;
 }
 
 .tab-bar {
@@ -162,5 +208,19 @@ const handleAddClick = async () => {
 .safe-area-bottom {
   height: env(safe-area-inset-bottom);
   background: #fff;
+}
+
+:deep(.t-tab-bar) {
+  --td-tab-bar-height: calc(50px + env(safe-area-inset-bottom));
+  --td-tab-bar-active-color: #02C588;
+  --td-tab-bar-active-bg-color: transparent;
+}
+
+:deep(.t-tab-bar-item) {
+  font-size: 12px;
+}
+
+:deep(.t-tab-bar-item__icon) {
+  font-size: 24px;
 }
 </style> 

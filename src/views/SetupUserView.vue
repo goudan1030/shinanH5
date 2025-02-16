@@ -6,53 +6,44 @@
       <h2 class="setup-title">设置账号信息</h2>
       
       <div class="setup-form">
-        <!-- 用户名输入 -->
+        <!-- 用户名输入框 -->
         <div class="form-item">
           <input
             v-model="username"
             type="text"
-            placeholder="请设置用户名"
+            placeholder="请输入用户名"
+            maxlength="20"
             class="input-field"
           >
         </div>
 
-        <!-- 密码输入 -->
+        <!-- 密码输入框 -->
         <div class="form-item">
           <input
             v-model="password"
-            :type="showPassword ? 'text' : 'password'"
+            type="password"
             placeholder="请设置密码"
+            maxlength="20"
             class="input-field"
           >
-          <span 
-            class="password-toggle"
-            @click="showPassword = !showPassword"
-          >
-            {{ showPassword ? '隐藏' : '显示' }}
-          </span>
         </div>
 
-        <!-- 确认密码 -->
+        <!-- 确认密码输入框 -->
         <div class="form-item">
           <input
             v-model="confirmPassword"
-            :type="showConfirmPassword ? 'text' : 'password'"
+            type="password"
             placeholder="请确认密码"
+            maxlength="20"
             class="input-field"
           >
-          <span 
-            class="password-toggle"
-            @click="showConfirmPassword = !showConfirmPassword"
-          >
-            {{ showConfirmPassword ? '隐藏' : '显示' }}
-          </span>
         </div>
 
         <!-- 提交按钮 -->
         <button
-          :disabled="!isFormValid || store.isLoading"
+          :disabled="!isValid || store.isLoading"
           @click="handleSubmit"
-          class="setup-btn"
+          class="submit-btn"
         >
           {{ store.isLoading ? '提交中...' : '完成' }}
         </button>
@@ -67,12 +58,13 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed } from 'vue'
+import { ref, computed, onMounted } from 'vue'
 import { useAuthStore } from '@/stores/auth'
-import { useRouter } from 'vue-router'
+import { useRouter, useRoute } from 'vue-router'
 import { Toast } from 'antd-mobile'
 
 const router = useRouter()
+const route = useRoute()
 const store = useAuthStore()
 const username = ref('')
 const password = ref('')
@@ -81,7 +73,7 @@ const showPassword = ref(false)
 const showConfirmPassword = ref(false)
 
 // 表单验证
-const isFormValid = computed(() => {
+const isValid = computed(() => {
   return username.value.length >= 2 && 
          password.value.length >= 6 && 
          password.value === confirmPassword.value
@@ -90,10 +82,17 @@ const isFormValid = computed(() => {
 // 提交表单
 const handleSubmit = async () => {
   try {
-    if (!username.value || !password.value) {
+    const phone = store.phone || route.query.phone as string
+
+    if (!phone || !username.value || !password.value) {
+      console.log('Setup params:', {
+        phone,
+        username: username.value,
+        password: password.value
+      })
       Toast.show({
         content: '请填写完整信息',
-        icon: 'fail'
+        icon: 'error'
       })
       return
     }
@@ -101,25 +100,58 @@ const handleSubmit = async () => {
     if (password.value !== confirmPassword.value) {
       Toast.show({
         content: '两次输入的密码不一致',
-        icon: 'fail'
+        icon: 'error'
       })
       return
     }
 
-    store.isLoading = true
-    await store.setupUser(username.value, password.value)
-    // 设置成功后跳转到首页
-    router.push('/home')
-  } catch (error) {
+    console.log('Submitting setup:', {
+      phone,
+      username: username.value
+    })
+
+    const success = await store.setupUser(phone, username.value, password.value)
+    if (success) {
+      Toast.show({
+        content: '设置成功',
+        icon: 'success'
+      })
+      
+      // 强制清除并重新初始化
+      store.clearAuth()
+      await store.initialize()
+      
+      console.log('Setup complete, auth state:', {
+        isLoggedIn: store.isLoggedIn,
+        user: store.user
+      })
+      
+      router.push('/')
+    }
+  } catch (error: any) {
     console.error('Setup failed:', error)
-  } finally {
-    store.isLoading = false
+    Toast.show({
+      content: error.message || '设置失败，请重试',
+      icon: 'error'
+    })
   }
 }
+
+// 在组件挂载时检查是否有手机号
+onMounted(() => {
+  const phone = store.phone || route.query.phone
+  if (!phone) {
+    console.error('No phone number found')
+    Toast.show({
+      content: '缺少手机号，请重新登录',
+      icon: 'error'
+    })
+    router.push('/login')
+  }
+})
 </script>
 
 <style scoped>
-/* 复用之前的样式 */
 .page-container {
   min-height: 100vh;
   position: relative;
@@ -148,19 +180,21 @@ const handleSubmit = async () => {
   font-size: 24px;
   color: #000000;
   font-weight: 500;
-  line-height: 1.4;
+}
+
+.setup-form {
+  margin-top: 30px;
 }
 
 .form-item {
   margin-bottom: 20px;
-  position: relative;
 }
 
 .input-field {
   width: 100%;
   height: 44px;
   border: none;
-  border-bottom: 1px solid #ddd;
+  border-bottom: 1px solid #DCDFE6;
   font-size: 16px;
   background: transparent;
   padding: 0;
@@ -176,18 +210,7 @@ const handleSubmit = async () => {
   color: #999;
 }
 
-.password-toggle {
-  position: absolute;
-  right: 0;
-  top: 50%;
-  transform: translateY(-50%);
-  color: #999;
-  font-size: 14px;
-  cursor: pointer;
-  user-select: none;
-}
-
-.setup-btn {
+.submit-btn {
   width: 100%;
   height: 44px;
   padding: 0;
@@ -197,11 +220,11 @@ const handleSubmit = async () => {
   border-radius: 22px;
   font-size: 16px;
   cursor: pointer;
-  margin: 0 auto 15px;
+  margin: 30px auto 0;
   display: block;
 }
 
-.setup-btn:disabled {
+.submit-btn:disabled {
   background-color: rgba(2, 197, 136, 0.5);
   cursor: not-allowed;
 }

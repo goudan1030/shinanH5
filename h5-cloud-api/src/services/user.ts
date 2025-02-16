@@ -1,8 +1,45 @@
+import { ResultSetHeader, RowDataPacket } from 'mysql2'
 import Database from '../utils/db'
 import bcrypt from 'bcryptjs'
-import type { User } from '../types/user'
+import type { User, UserService } from '../types/user'
 
-export const userService = {
+// 扩展 User 接口以满足 RowDataPacket 要求
+interface UserRow extends RowDataPacket {
+  id: number
+  phone: string
+  username?: string
+  password?: string
+  avatar?: string
+  created_at: Date
+  updated_at: Date
+}
+
+// 内部辅助函数，不导出
+async function checkUserExists(phone: string): Promise<boolean> {
+  const pool = await Database.getInstance()
+  const [rows] = await pool.execute(
+    'SELECT id FROM users WHERE phone = ?',
+    [phone]
+  )
+  return Array.isArray(rows) && rows.length > 0
+}
+
+// 内部辅助函数，不导出
+async function createUserWithPhone(phone: string): Promise<UserRow> {
+  const pool = await Database.getInstance()
+  const [result] = await pool.execute<ResultSetHeader>(
+    'INSERT INTO users (phone, created_at) VALUES (?, NOW())',
+    [phone]
+  )
+  
+  const [user] = await pool.execute<UserRow[]>(
+    'SELECT * FROM users WHERE id = ?',
+    [result.insertId]
+  )
+  return user[0]
+}
+
+export const userService: UserService = {
   // 保存验证码
   async saveVerificationCode(phone: string, code: string): Promise<void> {
     const pool = await Database.getInstance()
@@ -44,45 +81,27 @@ export const userService = {
     return false
   },
 
-  // 检查用户是否存在
-  async checkUserExists(phone: string): Promise<boolean> {
-    const pool = await Database.getInstance()
-    const [rows] = await pool.execute(
-      'SELECT id FROM users WHERE phone = ?',
-      [phone]
-    )
-    return Array.isArray(rows) && rows.length > 0
-  },
-
-  // 创建新用户
-  async createUserWithPhone(phone: string): Promise<void> {
-    const pool = await Database.getInstance()
-    await pool.execute(
-      'INSERT INTO users (phone, created_at) VALUES (?, NOW())',
-      [phone]
-    )
-  },
-
   // 根据手机号获取用户
-  async getUserByPhone(phone: string): Promise<User> {
+  async getUserByPhone(phone: string): Promise<UserRow | null> {
     const pool = await Database.getInstance()
-    const [rows] = await pool.execute(
-      'SELECT * FROM users WHERE phone = ?',
+    const [rows] = await pool.execute<UserRow[]>(
+      `SELECT u.*, us.avatar 
+       FROM users u 
+       LEFT JOIN user_settings us ON u.id = us.user_id 
+       WHERE u.phone = ?`,
       [phone]
     )
-
-    if (!Array.isArray(rows) || rows.length === 0) {
-      throw new Error('User not found')
-    }
-
-    return rows[0] as User
+    return rows[0] || null
   },
 
   // 验证密码
-  async verifyPassword(phone: string, password: string): Promise<User | null> {
+  async verifyPassword(phone: string, password: string): Promise<UserRow | null> {
     const pool = await Database.getInstance()
-    const [rows] = await pool.execute(
-      'SELECT * FROM users WHERE phone = ?',
+    const [rows] = await pool.execute<UserRow[]>(
+      `SELECT u.*, us.avatar 
+       FROM users u 
+       LEFT JOIN user_settings us ON u.id = us.user_id 
+       WHERE u.phone = ?`,
       [phone]
     )
 
@@ -90,7 +109,7 @@ export const userService = {
       return null
     }
 
-    const user = rows[0] as User
+    const user = rows[0] as UserRow
     if (!user.password) {
       return null
     }
@@ -100,12 +119,110 @@ export const userService = {
   },
 
   // 设置用户信息
-  async setupUser(phone: string, username: string, password: string): Promise<void> {
+  async setupUser(phone: string, username: string, password: string): Promise<UserRow> {
     const pool = await Database.getInstance()
     const hashedPassword = await bcrypt.hash(password, 10)
     await pool.execute(
       'UPDATE users SET username = ?, password = ?, updated_at = NOW() WHERE phone = ?',
       [username, hashedPassword, phone]
     )
+
+    const [users] = await pool.execute<UserRow[]>(
+      `SELECT u.*, us.avatar 
+       FROM users u 
+       LEFT JOIN user_settings us ON u.id = us.user_id 
+       WHERE u.phone = ?`,
+      [phone]
+    )
+
+    return users[0]
+  },
+
+  // 根据ID获取用户
+  async getUserById(id: number): Promise<UserRow | null> {
+    const pool = await Database.getInstance()
+    const [rows] = await pool.execute<UserRow[]>(
+      `SELECT u.*, us.avatar 
+       FROM users u 
+       LEFT JOIN user_settings us ON u.id = us.user_id 
+       WHERE u.id = ?`,
+      [id]
+    )
+    return rows[0] || null
+  },
+
+  // 更新最后登录时间
+  async updateLastLoginTime(userId: number): Promise<void> {
+    const pool = await Database.getInstance()
+    await pool.execute(
+      'UPDATE users SET last_login_at = NOW() WHERE id = ?',
+      [userId]
+    )
+  },
+
+  async getUserByPhoneOrCreate(phone: string): Promise<UserRow> {
+    const pool = await Database.getInstance()
+    
+    try {
+      const [rows] = await pool.execute<UserRow[]>(
+        `SELECT u.*, us.avatar 
+         FROM users u 
+         LEFT JOIN user_settings us ON u.id = us.user_id 
+         WHERE u.phone = ?`,
+        [phone]
+      )
+
+      if (rows.length > 0) {
+        return rows[0]
+      }
+
+      return await createUserWithPhone(phone)
+    } catch (error) {
+      console.error('Error in getUserByPhoneOrCreate:', error)
+      throw error
+    }
+  },
+
+  async updateUserInfo(userId: number, username: string): Promise<UserRow> {
+    const pool = await Database.getInstance()
+    
+    await pool.execute(
+      'UPDATE users SET username = ? WHERE id = ?',
+      [username, userId]
+    )
+
+    const [users] = await pool.execute<UserRow[]>(
+      `SELECT u.*, us.avatar 
+       FROM users u 
+       LEFT JOIN user_settings us ON u.id = us.user_id 
+       WHERE u.id = ?`,
+      [userId]
+    )
+
+    return users[0]
+  },
+
+  async updateAvatar(userId: number, avatarUrl: string): Promise<void> {
+    const pool = await Database.getInstance()
+    
+    // 检查是否已有用户设置
+    const [settings] = await pool.execute<RowDataPacket[]>(
+      'SELECT id FROM user_settings WHERE user_id = ?',
+      [userId]
+    )
+
+    if (settings.length > 0) {
+      // 更新现有设置
+      await pool.execute(
+        'UPDATE user_settings SET avatar = ? WHERE user_id = ?',
+        [avatarUrl, userId]
+      )
+    } else {
+      // 创建新的用户设置
+      await pool.execute(
+        'INSERT INTO user_settings (user_id, avatar) VALUES (?, ?)',
+        [userId, avatarUrl]
+      )
+    }
   }
 } 

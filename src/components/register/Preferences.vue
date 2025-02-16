@@ -1,86 +1,86 @@
 <template>
   <div class="preferences">
-    <adm-form
+    <Form
       :model="formData"
       @submit="onSubmit"
     >
-      <adm-form-item
+      <Form.Item
         label="年龄要求"
         name="ageRange"
         :rules="[{ required: true, message: '请选择年龄要求' }]"
       >
-        <adm-selector
+        <Selector
           v-model="formData.ageRange"
           :options="ageOptions"
           multiple
         />
-      </adm-form-item>
+      </Form.Item>
 
-      <adm-form-item
+      <Form.Item
         label="身高要求"
         name="heightRange"
         :rules="[{ required: true, message: '请选择身高要求' }]"
       >
-        <adm-selector
+        <Selector
           v-model="formData.heightRange"
           :options="heightOptions"
           multiple
         />
-      </adm-form-item>
+      </Form.Item>
 
-      <adm-form-item
+      <Form.Item
         label="学历要求"
         name="education"
         :rules="[{ required: true, message: '请选择学历要求' }]"
       >
-        <adm-selector
+        <Selector
           v-model="formData.education"
           :options="educationOptions"
           multiple
         />
-      </adm-form-item>
+      </Form.Item>
 
-      <adm-form-item
+      <Form.Item
         label="期望地区"
         name="location"
         :rules="[{ required: true, message: '请选择期望地区' }]"
       >
-        <adm-cascader-picker
+        <Cascader
           v-model="formData.location"
           :options="cityOptions"
           placeholder="请选择期望地区"
         >
           <template #default="{ open }">
-            <adm-input
+            <Input
               readonly
               :value="formData.locationText"
               placeholder="请选择期望地区"
               @click="open"
             />
           </template>
-        </adm-cascader-picker>
-      </adm-form-item>
+        </Cascader>
+      </Form.Item>
 
-      <adm-form-item
+      <Form.Item
         label="月收入要求"
         name="income"
         :rules="[{ required: true, message: '请选择月收入要求' }]"
       >
-        <adm-selector
+        <Selector
           v-model="formData.income"
           :options="incomeOptions"
           multiple
         />
-      </adm-form-item>
+      </Form.Item>
 
       <!-- 底部按钮 -->
       <div class="form-buttons">
-        <adm-space direction="vertical" block>
-          <adm-button block @click="handlePrev">上一步</adm-button>
-          <adm-button block type="submit" color="primary">完成</adm-button>
-        </adm-space>
+        <Space direction="vertical" block>
+          <Button block @click="handlePrev">上一步</Button>
+          <Button block type="submit" color="primary">完成</Button>
+        </Space>
       </div>
-    </adm-form>
+    </Form>
   </div>
 </template>
 
@@ -90,7 +90,7 @@ import {
   Form,
   Input,
   Selector,
-  CascaderPicker,
+  Cascader,
   Button,
   Space
 } from 'antd-mobile'

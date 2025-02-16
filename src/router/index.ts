@@ -3,6 +3,8 @@ import { useAuthStore } from '@/stores/auth'
 import TabBarLayout from '@/components/layout/TabBarLayout.vue'
 import HomeView from '@/views/HomeView.vue'
 import RegisterInfoView from '@/views/RegisterInfoView.vue'
+import axios from 'axios'
+import NotFound from '@/components/common/NotFound.vue'
 
 const router = createRouter({
   history: createWebHistory(import.meta.env.BASE_URL),
@@ -14,7 +16,7 @@ const router = createRouter({
         {
           path: '',
           name: 'home',
-          component: () => import('@/views/HomeView.vue')
+          component: HomeView
         },
         {
           path: 'groups',
@@ -37,7 +39,10 @@ const router = createRouter({
       path: '/register-info',
       name: 'registerInfo',
       component: () => import('@/views/RegisterInfoView.vue'),
-      meta: { title: '信息登记' }
+      meta: { 
+        requiresAuth: false,
+        title: '信息登记' 
+      }
     },
     {
       path: '/login',
@@ -73,31 +78,91 @@ const router = createRouter({
       path: '/setup-user',
       name: 'setup-user',
       component: () => import('@/views/SetupUserView.vue'),
-      meta: { requiresAuth: true, title: '设置账号' }
+      meta: { 
+        requiresAuth: true, 
+        requiresSetup: false,
+        title: '设置账号' 
+      }
+    },
+    {
+      path: '/favorites',
+      name: 'favorites',
+      component: () => import('@/views/FavoritesView.vue'),
+      meta: {
+        requiresAuth: true,
+        requiresSetup: false,
+        title: '我的收藏'
+      }
+    },
+    {
+      path: '/settings',
+      name: 'settings',
+      component: () => import('@/views/SettingsView.vue'),
+      meta: {
+        requiresAuth: true,
+        requiresSetup: false,
+        title: '设置'
+      }
+    },
+    {
+      path: '/user-profile',
+      name: 'user-profile',
+      component: () => import('@/views/UserProfileView.vue'),
+      meta: {
+        requiresAuth: true,
+        requiresSetup: false,
+        title: '个人信息'
+      }
     },
     {
       path: '/:pathMatch(.*)*',
       name: 'not-found',
-      component: () => import('@/views/NotFoundView.vue'),
-      meta: { requiresAuth: false, title: '页面未找到' }
+      component: NotFound,
+      meta: { requiresAuth: false }
     }
   ]
 })
 
 // 路由守卫
 router.beforeEach((to, from, next) => {
-  const authStore = useAuthStore()
-  const requiresAuth = to.meta.requiresAuth
+  console.log('\n=== 🛣️ 路由守卫 ===')
+  console.log('从:', from.path)
+  console.log('到:', to.path)
+  
+  const token = localStorage.getItem('token')
+  console.log('当前 token:', token ? token.substring(0, 20) + '...' : '无')
 
-  if (requiresAuth && !authStore.token) {
-    // 需要认证但未登录，重定向到登录页
-    next({ name: 'login' })
-  } else if (to.name === 'login' && authStore.token) {
-    // 已登录但访问登录页，重定向到用户中心
-    next({ name: 'user-center' })
-  } else {
-    next()
+  const authStore = useAuthStore()
+  const userStatus = authStore.checkUserStatus()
+
+  // 如果是临时用户，除了设置页面外，都重定向到设置页面
+  if (userStatus === 'need-setup' && to.name !== 'setup-user') {
+    console.log('临时用户访问其他页面，重定向到设置页面')
+    next({
+      name: 'setup-user',
+      query: { phone: authStore.user?.phone }
+    })
+    return
   }
+
+  // 如果是已激活用户访问设置页面，重定向到首页
+  if (userStatus === 'active' && to.name === 'setup-user') {
+    console.log('已激活用户访问设置页面，重定向到首页')
+    next('/')
+    return
+  }
+
+  // 需要登录的页面
+  if (to.meta.requiresAuth && userStatus === 'not-logged-in') {
+    console.log('未登录用户访问需要登录的页面，重定向到登录页')
+    next({
+      name: 'login',
+      query: { redirect: to.fullPath }
+    })
+    return
+  }
+
+  next()
 })
 
 // 添加标题更新

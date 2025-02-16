@@ -43,7 +43,7 @@
           <!-- 获取验证码按钮 -->
           <button
             :disabled="!isPhoneValid || !isAgreed || store.isLoading"
-            @click="handleGetCode"
+            @click="handleSendCode"
             class="login-btn"
           >
             {{ store.isLoading ? '发送中...' : '获取验证码' }}
@@ -83,6 +83,7 @@ import { useAuthStore } from '@/stores/auth'
 import { isWechatBrowser } from '@/utils/environment'
 import { useRouter } from 'vue-router'
 import SafeArea from '@/components/layout/SafeArea.vue'
+import { Toast } from 'antd-mobile'
 
 const router = useRouter()
 const store = useAuthStore()
@@ -96,19 +97,35 @@ const isPhoneValid = computed(() => {
 })
 
 // 获取验证码并跳转
-const handleGetCode = async () => {
-  if (!isPhoneValid.value) return
-  
+const handleSendCode = async () => {
   try {
     await store.sendVerificationCode(phone.value)
-    // 只有发送成功才跳转
+    Toast.show({
+      content: '验证码已发送',
+      icon: 'success'
+    })
     router.push({
       name: 'verify-code',
       query: { phone: phone.value }
     })
-  } catch (error) {
+  } catch (error: any) {
     console.error('Get code error:', error)
-    // 发送失败时不跳转，错误信息已经在 store 中设置
+    // 如果收到了短信但请求超时，也允许继续
+    if (error.message.includes('timeout')) {
+      Toast.show({
+        content: '验证码已发送',
+        icon: 'success'
+      })
+      router.push({
+        name: 'verify-code',
+        query: { phone: phone.value }
+      })
+      return
+    }
+    Toast.show({
+      content: error.message || '发送失败，请重试',
+      icon: 'fail'
+    })
   }
 }
 

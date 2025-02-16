@@ -1,8 +1,8 @@
 <template>
-  <div class="page-container">
+  <div class="not-found-container">
     <div class="gradient-header"></div>
     
-    <div class="not-found-container">
+    <div class="content">
       <h2 class="not-found-title">404</h2>
       <p class="not-found-text">抱歉，页面未找到</p>
       
@@ -24,16 +24,16 @@ const router = useRouter()
 const store = useAuthStore()
 
 const handleBack = () => {
-  if (store.token) {
-    router.push('/home')
+  if (store.isLoggedIn) {
+    router.push('/')
   } else {
-    router.push('/login')
+    router.push('/')
   }
 }
 </script>
 
 <style scoped>
-.page-container {
+.not-found-container {
   min-height: 100vh;
   position: relative;
   background-color: #fff;
@@ -48,7 +48,7 @@ const handleBack = () => {
   background: linear-gradient(180deg, rgba(2, 197, 136, 0.1) 0%, rgba(255, 255, 255, 0) 100%);
 }
 
-.not-found-container {
+.content {
   position: relative;
   max-width: 400px;
   margin: 0 auto;

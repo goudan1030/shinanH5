@@ -1,31 +1,52 @@
-import dotenv from 'dotenv'
-
-dotenv.config()
-
-// 使用 require 导入
-const SMSClient = require('@alicloud/sms-sdk')
+import OpenApi, { Config } from '@alicloud/openapi-client'
+import Dysmsapi20170525, * as $Dysmsapi20170525 from '@alicloud/dysmsapi20170525'
+import * as $tea from '@alicloud/tea-util'
 
 class SmsService {
-  private client: any
+  private client: Dysmsapi20170525
+  private config: {
+    accessKeyId: string
+    signName: string
+    templateCode: string
+  }
 
-  constructor() {
-    // 添加调试日志
-    console.log('Initializing SMS service with config:', {
-      accessKeyId: process.env.ALI_SMS_ACCESS_KEY_ID?.slice(0, 8) + '****',
-      signName: process.env.ALI_SMS_SIGN_NAME,
-      templateCode: process.env.ALI_SMS_TEMPLATE_LOGIN
+  constructor(config: { accessKeyId: string; signName: string; templateCode: string }) {
+    console.log('\n=== 📱 初始化短信服务 ===')
+    console.log('配置信息:', {
+      accessKeyId: config.accessKeyId?.substring(0, 8) + '****',
+      signName: config.signName,
+      templateCode: config.templateCode,
+      hasSecretKey: !!process.env.ALI_SMS_ACCESS_KEY_SECRET
     })
 
-    if (!process.env.ALI_SMS_ACCESS_KEY_ID || !process.env.ALI_SMS_ACCESS_KEY_SECRET) {
-      throw new Error('SMS credentials not configured')
+    // 验证配置
+    if (!config.accessKeyId || !config.signName || !config.templateCode || !process.env.ALI_SMS_ACCESS_KEY_SECRET) {
+      const missing: string[] = []
+      if (!config.accessKeyId) missing.push('accessKeyId')
+      if (!config.signName) missing.push('signName')
+      if (!config.templateCode) missing.push('templateCode')
+      if (!process.env.ALI_SMS_ACCESS_KEY_SECRET) missing.push('ALI_SMS_ACCESS_KEY_SECRET')
+      
+      throw new Error(`短信服务配置不完整，缺少: ${missing.join(', ')}`)
     }
 
-    this.client = new SMSClient({
-      accessKeyId: process.env.ALI_SMS_ACCESS_KEY_ID,
-      secretAccessKey: process.env.ALI_SMS_ACCESS_KEY_SECRET,
-      endpoint: 'dysmsapi.aliyuncs.com',
-      apiVersion: '2017-05-25'
-    })
+    this.config = config
+    
+    try {
+      const clientConfig = new Config({
+        accessKeyId: config.accessKeyId,
+        accessKeySecret: process.env.ALI_SMS_ACCESS_KEY_SECRET,
+        endpoint: 'dysmsapi.aliyuncs.com',
+        readTimeout: 10000,
+        connectTimeout: 10000
+      })
+
+      this.client = new Dysmsapi20170525(clientConfig)
+      console.log('✅ 短信服务初始化成功')
+    } catch (error) {
+      console.error('❌ 初始化短信客户端失败:', error)
+      throw new Error('短信服务初始化失败')
+    }
   }
 
   // 生成6位随机验证码
@@ -34,39 +55,100 @@ class SmsService {
   }
 
   // 发送验证码
-  async sendVerificationCode(phone: string, code: string) {
+  async sendVerificationCode(phone: string, code: string): Promise<void> {
+    console.log('\n=== 📱 发送验证码 ===')
+    console.log('手机号:', phone)
+    console.log('验证码:', code)
+    
     try {
-      console.log(`Sending verification code to ${phone}`)
-      
-      if (!process.env.ALI_SMS_SIGN_NAME || !process.env.ALI_SMS_TEMPLATE_LOGIN) {
-        throw new Error('SMS template configuration missing')
-      }
-
-      const params = {
-        PhoneNumbers: phone,
-        SignName: process.env.ALI_SMS_SIGN_NAME,
-        TemplateCode: process.env.ALI_SMS_TEMPLATE_LOGIN,
-        TemplateParam: JSON.stringify({ code })
-      }
-
-      console.log('SMS request params:', {
-        ...params,
-        PhoneNumbers: params.PhoneNumbers.slice(0, 3) + '****' + params.PhoneNumbers.slice(-4)
+      const sendSmsRequest = new $Dysmsapi20170525.SendSmsRequest({
+        phoneNumbers: phone,
+        signName: this.config.signName,
+        templateCode: this.config.templateCode,
+        templateParam: JSON.stringify({ code })
       })
 
-      const result = await this.client.sendSMS(params)
-      console.log('SMS send result:', result)
+      const runtime = new $tea.RuntimeOptions({
+        readTimeout: 10000,
+        connectTimeout: 10000,
+        maxAttempts: 3
+      })
 
-      if (result.Code !== 'OK') {
-        throw new Error(`SMS send failed: ${result.Message}`)
+      const result = await this.client.sendSmsWithOptions(sendSmsRequest, runtime)
+      
+      if (!result?.body?.code || result.body.code !== 'OK') {
+        console.error('发送短信失败:', {
+          code: result?.body?.code,
+          message: result?.body?.message,
+          requestId: result?.body?.requestId
+        })
+        throw new Error(`发送短信失败: ${result?.body?.message || '未知错误'}`)
       }
 
-      return true
+      console.log('✅ 短信发送成功:', {
+        requestId: result.body.requestId,
+        bizId: result.body.bizId
+      })
     } catch (error) {
-      console.error('Send SMS error:', error)
-      throw error
+      console.error('短信服务错误:', error)
+      
+      if (error instanceof Error) {
+        if (error.message.includes('InvalidAccessKeyId')) {
+          throw new Error('短信服务配置错误，请联系管理员')
+        } else if (error.message.includes('isv.MOBILE_NUMBER_ILLEGAL')) {
+          throw new Error('手机号格式错误')
+        } else if (error.message.includes('isv.BUSINESS_LIMIT_CONTROL')) {
+          throw new Error('发送太频繁，请稍后再试')
+        }
+      }
+      
+      throw new Error('发送短信失败，请稍后重试')
     }
   }
 }
 
-export const smsService = new SmsService() 
+// 创建单例实例的工厂函数
+function createSmsService() {
+  const config = {
+    accessKeyId: process.env.ALI_SMS_ACCESS_KEY_ID || '',
+    signName: process.env.ALI_SMS_SIGN_NAME || '',
+    templateCode: process.env.ALI_SMS_TEMPLATE_LOGIN || ''
+  }
+
+  // 验证所有必需的环境变量
+  const missing: string[] = []
+  if (!config.accessKeyId) missing.push('ALI_SMS_ACCESS_KEY_ID')
+  if (!config.signName) missing.push('ALI_SMS_SIGN_NAME')
+  if (!config.templateCode) missing.push('ALI_SMS_TEMPLATE_LOGIN')
+  if (!process.env.ALI_SMS_ACCESS_KEY_SECRET) missing.push('ALI_SMS_ACCESS_KEY_SECRET')
+
+  if (missing.length > 0) {
+    throw new Error(`环境变量缺失: ${missing.join(', ')}。请检查 .env 文件。`)
+  }
+
+  // 这里使用类型断言，因为我们已经验证了所有值都存在
+  return new SmsService(config as {
+    accessKeyId: string
+    signName: string
+    templateCode: string
+  })
+}
+
+// 创建单例实例
+let smsServiceInstance: SmsService | null = null
+
+export const smsService = {
+  generateVerificationCode(): string {
+    if (!smsServiceInstance) {
+      smsServiceInstance = createSmsService()
+    }
+    return smsServiceInstance.generateVerificationCode()
+  },
+
+  async sendVerificationCode(phone: string, code: string): Promise<void> {
+    if (!smsServiceInstance) {
+      smsServiceInstance = createSmsService()
+    }
+    return smsServiceInstance.sendVerificationCode(phone, code)
+  }
+} 

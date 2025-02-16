@@ -9,6 +9,9 @@ import router from './router'
 import 'antd-mobile/es/global'
 import 'antd-mobile/bundle/style.css'
 
+// 导入 TDesign Mobile 样式
+import 'tdesign-mobile-vue/es/style/index.css'
+
 const app = createApp(App)
 
 app.use(createPinia())

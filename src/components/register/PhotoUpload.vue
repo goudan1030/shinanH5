@@ -4,16 +4,16 @@
       请上传您的真实照片，这将提高您的匹配成功率
     </div>
 
-    <adm-form
+    <Form
       :model="formData"
       @submit="onSubmit"
     >
-      <adm-form-item
+      <Form.Item
         name="photos"
         :rules="[{ required: true, message: '请至少上传一张照片' }]"
       >
-        <adm-image-uploader
-          v-model:value="formData.photos"
+        <ImageUploader
+          v-model="formData.photos"
           :max-count="6"
           :max-size="2 * 1024 * 1024"
           accept="image/*"
@@ -22,16 +22,16 @@
           @on-exceed="onExceed"
           @on-oversize="onOversize"
         />
-      </adm-form-item>
+      </Form.Item>
 
       <!-- 底部按钮 -->
       <div class="form-buttons">
-        <adm-space direction="vertical" block>
-          <adm-button block @click="handlePrev">上一步</adm-button>
-          <adm-button block type="submit" color="primary">下一步</adm-button>
-        </adm-space>
+        <Space direction="vertical" block>
+          <Button block @click="handlePrev">上一步</Button>
+          <Button block type="submit" color="primary">下一步</Button>
+        </Space>
       </div>
-    </adm-form>
+    </Form>
   </div>
 </template>
 
@@ -44,7 +44,7 @@ import {
   Space,
   Toast
 } from 'antd-mobile'
-import type { ImageUploadItem } from 'antd-mobile/es/components/image-uploader'
+import type { ImageUploadItem } from 'antd-mobile/es/components/image-uploader/image-uploader'
 
 const emit = defineEmits(['next', 'prev'])
 

@@ -60,29 +60,29 @@ const formatPhone = computed(() => {
 })
 
 // 处理输入
-const handleInput = (event: Event, index: number) => {
+const handleInput = async (event: Event, index: number) => {
   const input = event.target as HTMLInputElement
   const value = input.value
-  
-  // 只允许数字
+
+  // 确保只接受数字
   if (!/^\d*$/.test(value)) {
     input.value = ''
     return
   }
 
   // 更新验证码
-  const newCode = code.value.split('')
-  newCode[index] = value
-  code.value = newCode.join('')
+  code.value = code.value.split('')
+  code.value[index] = value
+  code.value = code.value.join('')
 
-  // 自动跳到下一个输入框
-  if (value && index < 5) {
-    inputs.value[index + 1].focus()
-  }
+  console.log('Current code:', code.value)
 
-  // 如果输入完成，自动验证
-  if (code.value.length === 6) {
-    verifyCode()
+  // 如果是最后一位且验证码已满6位，自动提交
+  if (index === 5 && code.value.length === 6) {
+    await verifyCode()
+  } else if (value && index < 5) {
+    // 自动跳到下一个输入框
+    inputs.value[index + 1]?.focus()
   }
 }
 
@@ -111,18 +111,24 @@ const handlePaste = (event: ClipboardEvent) => {
 
 // 验证码验证
 const verifyCode = async () => {
-  if (code.value.length !== 6) return
-  
   try {
-    isLoading.value = true
-    const user = await store.loginWithPhone(store.phone, code.value)
+    console.log('Verifying code:', {
+      phone: store.phone,
+      code: code.value
+    })
     
-    if (user.isNewUser) {
-      // 如果是新用户，跳转到设置用户信息页面
-      router.push('/setup-user')
-    } else {
-      // 如果是老用户，跳转到首页
-      router.push('/home')
+    const success = await store.loginWithPhone(store.phone, code.value)
+    if (success) {
+      if (store.user?.needSetup) {
+        console.log('临时用户，跳转到设置页面')
+        router.push({
+          name: 'setup-user',
+          query: { phone: store.phone }
+        })
+      } else {
+        console.log('已激活用户，跳转到首页')
+        router.push('/')
+      }
     }
   } catch (error: any) {
     console.error('Verification failed:', error)
@@ -130,15 +136,6 @@ const verifyCode = async () => {
       content: error.message || '验证失败，请重试',
       icon: 'fail'
     })
-    // 清空验证码
-    code.value = ''
-    inputs.value.forEach(input => {
-      input.value = ''
-    })
-    // 聚焦第一个输入框
-    inputs.value[0]?.focus()
-  } finally {
-    isLoading.value = false
   }
 }
 

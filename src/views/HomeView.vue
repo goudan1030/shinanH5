@@ -64,10 +64,24 @@ import { Icon as VanIcon } from 'vant'
 import SafeArea from '@/components/layout/SafeArea.vue'
 import TopTabs from '@/components/home/TopTabs.vue'
 import TabContent from '@/components/home/TabContent.vue'
+import {
+  TabBar as TTabBar,
+  TabBarItem as TTabBarItem,
+  PullDownRefresh as TPullDownRefresh,
+  Dialog as TDialog,
+} from 'tdesign-mobile-vue'
+import {
+  HomeIcon,
+  ChatIcon,
+  NotificationIcon,
+  UserIcon,
+} from 'tdesign-icons-vue-next'
 
 const router = useRouter()
 const activeTab = ref('home')
 const activeTopTab = ref('latest')
+const refreshing = ref(false)
+const stats = ref(null)
 
 const allTabs = [
   { key: 'home', title: '首页', icon: 'home-o' },
@@ -100,6 +114,20 @@ const handleSearch = () => {
 const handleFilter = () => {
   console.log('Filter clicked')
 }
+
+const onRefresh = async () => {
+  try {
+    // 这里添加刷新数据的逻辑
+    await Promise.all([
+      // 刷新统计数据
+      // 刷新列表数据
+    ])
+  } catch (error) {
+    console.error('刷新失败:', error)
+  } finally {
+    refreshing.value = false
+  }
+}
 </script>
 
 <style scoped>
@@ -107,7 +135,6 @@ const handleFilter = () => {
   display: flex;
   flex-direction: column;
   min-height: 100%;
-  background: #F7F8FC;
 }
 
 .content {
@@ -115,7 +142,6 @@ const handleFilter = () => {
   overflow-y: auto;
   -webkit-overflow-scrolling: touch;
   padding: 0 16px 50px 16px; /* 添加左右内边距，保留底部内边距 */
-  background: #F7F8FC;
 }
 
 .tab-bar {
@@ -186,5 +212,13 @@ const handleFilter = () => {
   height: env(safe-area-inset-bottom);
   background: #fff;
   z-index: 99;
+}
+
+:deep(.adm-pull-to-refresh) {
+  min-height: calc(100vh - env(safe-area-inset-top));
+}
+
+.home {
+  min-height: 100vh;
 }
 </style> 

@@ -11,7 +11,7 @@
         <!-- 手机号输入 -->
         <div class="form-item">
           <input
-            v-model="phone"
+            v-model="form.phone"
             type="tel"
             placeholder="请输入手机号"
             maxlength="11"
@@ -22,7 +22,7 @@
         <!-- 密码输入 -->
         <div class="form-item">
           <input
-            v-model="password"
+            v-model="form.password"
             :type="showPassword ? 'text' : 'password'"
             placeholder="请输入密码"
             class="input-field"
@@ -65,26 +65,72 @@
 import { ref, computed } from 'vue'
 import { useAuthStore } from '@/stores/auth'
 import { useRouter } from 'vue-router'
+import { Toast } from 'antd-mobile'
 
 const router = useRouter()
 const store = useAuthStore()
-const phone = ref('')
-const password = ref('')
+
+const form = ref({
+  phone: '',
+  password: ''
+})
+
 const showPassword = ref(false)
 
 // 表单验证
-const isPhoneValid = computed(() => {
-  return /^1[3-9]\d{9}$/.test(phone.value)
-})
-
 const isFormValid = computed(() => {
-  return isPhoneValid.value && password.value.length >= 6
+  // 手机号格式验证
+  const isPhoneValid = /^1[3-9]\d{9}$/.test(form.value.phone)
+  // 密码长度至少6位
+  const isPasswordValid = form.value.password.length >= 6
+  
+  return isPhoneValid && isPasswordValid
 })
 
 // 登录处理
 const handleLogin = async () => {
-  if (!isFormValid.value) return
-  // TODO: 实现密码登录逻辑
+  try {
+    if (!isFormValid.value) {
+      Toast.show({
+        content: '请输入正确的手机号和密码',
+        icon: 'error'
+      })
+      return
+    }
+
+    console.log('Attempting login:', {
+      phone: form.value.phone
+    })
+
+    const success = await store.loginWithPassword(form.value.phone, form.value.password)
+    console.log('Login result:', success)
+    
+    if (success) {
+      console.log('Login successful, user:', store.user)
+      
+      Toast.show({
+        content: '登录成功',
+        icon: 'success'
+      })
+
+      // 等待 Toast 显示
+      await new Promise(resolve => setTimeout(resolve, 500))
+      
+      // 跳转到首页
+      router.push('/')
+    } else {
+      Toast.show({
+        content: store.errorMessage || '登录失败',
+        icon: 'error'
+      })
+    }
+  } catch (error: any) {
+    console.error('Login failed:', error)
+    Toast.show({
+      content: error.message || '登录失败，请重试',
+      icon: 'error'
+    })
+  }
 }
 
 // 返回验证码登录

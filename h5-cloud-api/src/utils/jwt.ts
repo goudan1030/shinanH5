@@ -9,16 +9,33 @@ if (!JWT_SECRET) {
   throw new Error('JWT_SECRET must be defined in environment variables')
 }
 
-export const generateToken = (payload: any): string => {
-  return jwt.sign(payload, JWT_SECRET, { 
-    expiresIn: '7d',  // Token 有效期7天
-    algorithm: 'HS256' // 使用 HMAC SHA256 算法
-  })
+interface TokenPayload {
+  id: number
+  phone: string
 }
 
-export const verifyToken = (token: string): any => {
+export const generateToken = (payload: TokenPayload): string => {
+  if (!payload.id || !payload.phone) {
+    throw new Error('Invalid token payload')
+  }
+
+  const options: jwt.SignOptions = {
+    expiresIn: process.env.JWT_EXPIRES_IN || '7d',
+    algorithm: 'HS256'
+  } as jwt.SignOptions
+
+  return jwt.sign(payload, JWT_SECRET, options)
+}
+
+export const verifyToken = (token: string): TokenPayload => {
   try {
-    return jwt.verify(token, JWT_SECRET)
+    const decoded = jwt.verify(token, JWT_SECRET) as TokenPayload
+    
+    if (!decoded.id || !decoded.phone) {
+      throw new Error('Invalid token structure')
+    }
+    
+    return decoded
   } catch (error) {
     throw new Error('Invalid token')
   }

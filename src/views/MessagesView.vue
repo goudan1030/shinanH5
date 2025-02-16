@@ -1,26 +1,20 @@
 <template>
   <div class="messages">
-    <adm-nav-bar>消息</adm-nav-bar>
-    <div class="content">
-      <div class="empty-state">
-        <p>消息功能开发中...</p>
-      </div>
+    <div class="empty-state">
+      <p>页面开发中...</p>
     </div>
   </div>
 </template>
 
 <script setup lang="ts">
-import { NavBar } from 'antd-mobile'
 </script>
 
 <style scoped>
 .messages {
   min-height: 100vh;
-  background: #F7F8FC;
-}
-
-.content {
-  padding: 16px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
 }
 
 .empty-state {
