@@ -89,6 +89,7 @@ import {
 import UserCard from '@/components/mine/UserCard.vue'
 import Footer from '@/components/common/Footer.vue'
 import ServicePopup from '@/components/common/ServicePopup.vue'
+import { Toast } from 'tdesign-mobile-vue'
 
 const router = useRouter()
 const store = useAuthStore()
@@ -134,6 +135,37 @@ const handleService = () => {
 // 处理关于我们
 const handleAbout = () => {
   router.push('/about')
+}
+
+const handleRegisterClick = async () => {
+  if (!store.user?.phone) {
+    Toast.show({
+      content: '请先登录',
+      icon: 'fail'
+    })
+    router.push('/login')
+    return
+  }
+
+  try {
+    const response = await authApi.checkUserRegistered(store.user.phone)
+    if (response.data?.isRegistered) {
+      Toast.show({
+        content: response.data.message,
+        icon: 'info'
+      })
+      return
+    }
+    
+    // 未登记，跳转到登记页面
+    router.push('/register-info')
+  } catch (error: any) {
+    console.error('Check registered failed:', error)
+    Toast.show({
+      content: error.message || '检查状态失败',
+      icon: 'fail'
+    })
+  }
 }
 
 // 组件挂载时刷新用户信息

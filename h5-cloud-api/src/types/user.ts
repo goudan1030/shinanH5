@@ -34,6 +34,8 @@ export interface UserService {
   saveVerificationCode(phone: string, code: string): Promise<void>
   verifyCode(phone: string, code: string): Promise<boolean>
   findOrCreateUserByPhone(phone: string): Promise<UserRow>
+  checkUserRegistered(phone: string): Promise<boolean>
+  findUserByPhone(phone: string): Promise<UserRow | null>
 }
 
 export interface UserLoginResponse {

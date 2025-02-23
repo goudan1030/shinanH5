@@ -37,12 +37,15 @@ export const authApi = {
     request.post<ApiResponse<LoginResponse>>('/auth/login/phone', data),
 
   // 设置用户信息
-  setupUser: (data: { phone: string; username: string; password: string }) =>
-    request.post<ApiResponse<SetupUserResponse>>('/auth/setup', {
-      phone: data.phone,
-      username: data.username,
-      password: data.password
-    }),
+  async setupUser(params: { 
+    phone: string
+    username: string
+    password: string 
+  }, token?: string): Promise<ApiResponse> {
+    return request.post('/auth/setup', params, {
+      headers: token ? { Authorization: `Bearer ${token}` } : undefined
+    })
+  },
 
   // 获取当前用户信息
   getCurrentUser: () => 
@@ -59,5 +62,14 @@ export const authApi = {
     request.post<ApiResponse<LoginResponse>>('/auth/login/password', { 
       phone, 
       password 
-    })
+    }),
+
+  // 添加获取临时 token 的方法
+  async getTempToken(phone: string): Promise<ApiResponse> {
+    return request.post('/auth/temp-token', { phone })
+  },
+
+  // 检查用户是否已登记
+  checkUserRegistered: (phone: string) => 
+    request.post('/auth/check-registered', { phone })
 } 

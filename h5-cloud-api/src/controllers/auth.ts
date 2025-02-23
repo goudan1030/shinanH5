@@ -88,12 +88,16 @@ export const loginWithPhone: AsyncHandler = async (req, res) => {
       })
     }
 
+    // 获取数据库连接
+    const pool = await Database.getInstance()
+    connection = await pool.getConnection()
+
     // 查找或创建用户
     const user = await userService.findOrCreateUserByPhone(phone)
 
     // 检查用户状态
-    if (user.status === 'temporary') {
-      console.log('⚠️ 临时用户需要完成注册')
+    if (user.status === 'temporary' || !user.username) {
+      console.log('⚠️ 用户需要完成注册:', { status: user.status, username: user.username })
       return res.json({
         success: true,
         message: '需要完成注册',
@@ -109,15 +113,6 @@ export const loginWithPhone: AsyncHandler = async (req, res) => {
       })
     }
 
-    // 获取用户完整信息
-    const pool = await Database.getInstance()
-    connection = await pool.getConnection()
-
-    const [userSettings] = await connection.execute(
-      'SELECT username, avatar FROM user_settings WHERE user_id = ?',
-      [user.id]
-    )
-
     // 生成 token
     const token = generateToken({ 
       id: user.id, 
@@ -127,7 +122,7 @@ export const loginWithPhone: AsyncHandler = async (req, res) => {
     console.log('✅ 登录成功:', {
       userId: user.id,
       phone: user.phone,
-      hasUsername: !!userSettings?.[0]?.username
+      username: user.username
     })
 
     res.json({
@@ -138,8 +133,8 @@ export const loginWithPhone: AsyncHandler = async (req, res) => {
         user: {
           id: user.id,
           phone: user.phone,
-          username: userSettings?.[0]?.username || null,
-          avatar: userSettings?.[0]?.avatar || null,
+          username: user.username || null,
+          avatar: user.avatar || null,
           isNewUser: false,
           needSetup: false
         }
@@ -161,18 +156,55 @@ export const loginWithPhone: AsyncHandler = async (req, res) => {
 // 密码登录
 export const loginWithPassword: AsyncHandler = async (req, res) => {
   const { phone, password } = req.body
+  
+  // 先检查用户是否存在
+  const userExists = await userService.findUserByPhone(phone)
+  if (!userExists) {
+    return res.status(401).json({
+      success: false,
+      message: '该手机号未注册',
+      data: {
+        shouldUsePhoneLogin: true
+      }
+    })
+  }
+
+  // 获取用户信息
+  const userInfo = await userService.findUserByPhone(phone)
+  
+  // 检查用户是否设置了密码
+  if (!userInfo?.password) {
+    return res.status(401).json({
+      success: false,
+      message: '该账号未设置密码，请使用验证码登录',
+      data: {
+        shouldUsePhoneLogin: true
+      }
+    })
+  }
+
+  // 验证密码
   const user = await userService.verifyPassword(phone, password) as UserRow
   if (!user) {
-    return res.status(401).json({ message: '手机号或密码错误' })
+    return res.status(401).json({
+      success: false,
+      message: '手机号或密码错误'
+    })
   }
   const token = generateToken({ id: user.id, phone: user.phone })
-  res.json({ 
-    token, 
-    user: {
-      id: user.id,
-      phone: user.phone,
-      username: user.username,
-      avatar: user.avatar
+  res.json({
+    success: true,
+    message: '登录成功',
+    data: {
+      token,
+      user: {
+        id: user.id,
+        phone: user.phone,
+        username: user.username,
+        avatar: user.avatar,
+        isNewUser: false,
+        needSetup: false
+      }
     }
   })
 }
@@ -457,4 +489,60 @@ export const checkUserStatus: AsyncHandler = async (req, res) => {
       message: error.message || '检查用户状态失败'
     })
   }
-} 
+}
+
+// 获取临时 token
+export const getTempToken: AsyncHandler = async (req, res) => {
+  const { phone } = req.body
+  
+  try {
+    // 查找用户
+    const user = await userService.findUserByPhone(phone)
+    if (!user) {
+      return res.status(404).json({
+        success: false,
+        message: '用户不存在'
+      })
+    }
+
+    // 生成临时 token
+    const token = generateToken({ 
+      id: user.id, 
+      phone: user.phone,
+      isTemp: true
+    })
+
+    res.json({
+      success: true,
+      data: { token }
+    })
+  } catch (error: any) {
+    console.error('Get temp token error:', error)
+    res.status(500).json({
+      success: false,
+      message: error.message || '获取临时令牌失败'
+    })
+  }
+}
+
+// 检查用户是否已登记
+export const checkUserRegistered: AsyncHandler = async (req, res) => {
+  const { phone } = req.body
+
+  try {
+    const isRegistered = await userService.checkUserRegistered(phone)
+    res.json({
+      success: true,
+      data: {
+        isRegistered,
+        message: isRegistered ? '您已完成信息登记，可前往个人中心修改信息' : null
+      }
+    })
+  } catch (error: any) {
+    console.error('Check user registered error:', error)
+    res.status(500).json({
+      success: false,
+      message: error.message || '检查用户状态失败'
+    })
+  }
+}
