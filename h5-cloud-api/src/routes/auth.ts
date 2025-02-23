@@ -2,6 +2,7 @@ import { Router } from 'express'
 import { sendCode, loginWithPhone, loginWithPassword, setupUser, getCurrentUser, updateUser, checkLoginStatus, checkUserStatus, getTempToken, checkUserRegistered } from '../controllers/auth'
 import { authMiddleware } from '../middleware/auth'
 import { createAsyncHandler } from '../types/express'
+import { userService } from '../services/userService'
 
 const router = Router()
 
@@ -22,5 +23,26 @@ router.put('/user', authMiddleware, updateUser)
 router.get('/check-login', createAsyncHandler(checkLoginStatus))
 router.get('/check-status', authMiddleware, createAsyncHandler(checkUserStatus))
 router.post('/check-registered', createAsyncHandler(checkUserRegistered))
+
+// 添加会员信息路由
+router.post('/member-info', createAsyncHandler(async (req, res) => {
+  console.log('收到保存会员信息请求:', req.body)
+  
+  try {
+    await userService.saveMemberInfo(req.body)
+    console.log('会员信息保存成功')
+    
+    res.json({
+      success: true,
+      message: '保存成功'
+    })
+  } catch (error) {
+    console.error('保存会员信息失败:', error)
+    res.status(500).json({
+      success: false,
+      message: '保存失败'
+    })
+  }
+}))
 
 export default router 

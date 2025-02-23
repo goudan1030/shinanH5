@@ -2,6 +2,7 @@ import axios from 'axios'
 import type { ApiError } from '@/types'
 import { useAuthStore } from '@/stores/auth'
 import { useRouter } from 'vue-router'
+import router from '@/router'
 
 const request = axios.create({
   baseURL: import.meta.env.VITE_API_URL,  // 这里已经包含了 /api 前缀
@@ -44,7 +45,6 @@ request.interceptors.response.use(
     if (error.response?.status === 401) {
       const authStore = useAuthStore()
       authStore.logout() // 清除登录状态
-      const router = useRouter()
       router.push({
         name: 'login',
         query: { redirect: router.currentRoute.value.fullPath }
@@ -64,4 +64,4 @@ request.interceptors.response.use(
   }
 )
 
-export default request 
+export default request

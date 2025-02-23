@@ -1,6 +1,6 @@
 import { Request, Response, NextFunction } from 'express'
-import jwt from 'jsonwebtoken'
-import { JWT_SECRET } from '../config'
+import { verifyToken } from '../utils/jwt'
+import { userService } from '../services/userService'
 
 // 定义 token 的 payload 类型
 interface JwtPayload {
@@ -18,38 +18,54 @@ declare global {
   }
 }
 
-export const authMiddleware = (req: Request, res: Response, next: NextFunction) => {
-  console.log('=== 认证中间件 ===')
+export const authMiddleware = async (req: Request, res: Response, next: NextFunction) => {
+  console.log('\n=== 认证中间件 ===')
   console.log('请求路径:', req.path)
   console.log('请求头:', {
     authorization: req.headers.authorization,
     'user-agent': req.headers['user-agent']
   })
 
-  const token = req.headers.authorization?.split(' ')[1]
-  
-  if (!token) {
+  const authHeader = req.headers.authorization
+  if (!authHeader) {
     console.log('❌ 未提供 token')
-    return res.status(401).json({ 
+    return res.status(401).json({
       success: false,
-      message: '未登录' 
+      message: '未登录'
     })
   }
 
   try {
-    console.log('🔍 验证 token')
-    const decoded = jwt.verify(token, JWT_SECRET) as JwtPayload
-    console.log('✅ token 验证成功:', decoded)
-    req.user = decoded
+    const token = authHeader.split(' ')[1]
+    const decoded = verifyToken(token)
+    
+    // 如果是设置用户信息的请求，允许使用临时 token
+    if (req.path === '/setup' && decoded.isTemp) {
+      req.user = decoded
+      return next()
+    }
+
+    // 其他请求需要完整的用户信息
+    const user = await userService.getUserById(decoded.id)
+    if (!user) {
+      console.log('❌ 用户不存在')
+      return res.status(401).json({
+        success: false,
+        message: '用户不存在'
+      })
+    }
+
+    req.user = {
+      id: user.id,
+      phone: user.phone
+    }
+
     next()
   } catch (error) {
-    console.error('❌ token 验证失败:', {
-      error: error instanceof Error ? error.message : error,
-      token
-    })
-    res.status(401).json({ 
+    console.error('❌ Token 验证失败:', error)
+    res.status(401).json({
       success: false,
-      message: '登录已过期，请重新登录' 
+      message: '未登录'
     })
   }
 } 

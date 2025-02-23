@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, computed } from 'vue'
+import { ref, computed, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { useAuthStore } from '@/stores/auth'
 import { 
@@ -11,6 +11,7 @@ import {
 } from 'tdesign-mobile-vue'
 import NavBar from '@/components/common/NavBar.vue'
 import AvatarUpload from '@/components/common/AvatarUpload.vue'
+import { showToast } from 'vant'
 
 const router = useRouter()
 const authStore = useAuthStore()
@@ -19,8 +20,23 @@ const hasNewAvatar = ref(false)
 const isLoading = ref(false)
 
 // 表单数据
-const username = ref(authStore.userInfo?.username || '')
-const avatar = ref(authStore.userInfo?.avatar || '')
+const formData = ref({
+  nickname: '',
+  // 其他字段
+})
+
+// 获取用户信息并回显
+const fetchUserInfo = async () => {
+  try {
+    const user = await authStore.getCurrentUser()
+    if (user) {
+      formData.value.nickname = user.nickname || user.username || ''
+    }
+  } catch (error) {
+    console.error('获取用户信息失败:', error)
+    showToast('获取用户信息失败')
+  }
+}
 
 const handleAvatarChange = (file: File) => {
   console.log('头像文件已选择:', {
@@ -36,8 +52,8 @@ const onSubmit = async () => {
     isLoading.value = true
     console.log('开始保存用户信息:', {
       hasNewAvatar: hasNewAvatar.value,
-      currentAvatar: avatar.value,
-      username: username.value
+      currentAvatar: formData.value.avatar,
+      nickname: formData.value.nickname
     })
     
     // 如果有新头像，先上传头像
@@ -49,8 +65,8 @@ const onSubmit = async () => {
 
       if (uploadResult?.avatarUrl) {
         // 更新本地头像状态
-        avatar.value = uploadResult.avatarUrl
-        console.log('更新本地头像状态:', avatar.value)
+        formData.value.avatar = uploadResult.avatarUrl
+        console.log('更新本地头像状态:', formData.value.avatar)
 
         // 更新 store 中的用户信息
         authStore.userInfo = {
@@ -65,14 +81,12 @@ const onSubmit = async () => {
     
     // 更新用户信息
     console.log('开始更新用户信息到服务器...')
-    await authStore.updateUserInfo(username.value)
+    await authStore.updateUserInfo({
+      nickname: formData.value.nickname
+    })
     console.log('用户信息更新完成')
     
-    TToast({
-      message: '保存成功',
-      theme: 'success',
-      duration: 2000
-    })
+    showToast('保存成功')
     
     router.back()
   } catch (error) {
@@ -82,11 +96,7 @@ const onSubmit = async () => {
       errorStack: error.stack,
       errorResponse: error.response?.data
     })
-    TToast({
-      message: '保存失败，请重试',
-      theme: 'error',
-      duration: 2000
-    })
+    showToast('保存失败')
   } finally {
     isLoading.value = false
   }
@@ -95,6 +105,10 @@ const onSubmit = async () => {
 const onAvatarSuccess = (url: string) => {
   // This function is no longer used in the new onSubmit logic
 }
+
+onMounted(() => {
+  fetchUserInfo()
+})
 </script>
 
 <template>
@@ -104,14 +118,14 @@ const onAvatarSuccess = (url: string) => {
     <div class="form-container">
       <AvatarUpload
         ref="avatarUploadRef"
-        v-model="avatar"
+        v-model="formData.avatar"
         @change="handleAvatarChange"
       />
       <t-cell-group>
         <t-cell title="用户名">
           <template #note>
             <t-input
-              v-model="username"
+              v-model="formData.nickname"
               placeholder="请输入用户名"
               align="right"
               :borderless="true"

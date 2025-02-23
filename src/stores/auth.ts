@@ -1,28 +1,22 @@
 import { defineStore } from 'pinia'
 import { ref } from 'vue'
+import { useRouter } from 'vue-router'
 import { authApi } from '@/api/auth'
 import type { LoginResponse } from '@/api/auth'
 import { Toast } from 'antd-mobile'
 import { isTestPhone, verifyTestCode, getTestUser } from '@/utils/testData'
-import type { UserInfo } from '@/types/auth'
+import type { UserInfo, MemberInfo } from '@/types/auth'
+import { memberApi } from '@/api/member'
 
 export const useAuthStore = defineStore('auth', {
   state: () => ({
     token: localStorage.getItem('token') || '',
-    user: (() => {
-      const userStr = localStorage.getItem('userInfo')
-      try {
-        return userStr ? JSON.parse(userStr) : null
-      } catch (e) {
-        console.error('Failed to parse user info:', e)
-        localStorage.removeItem('userInfo')
-        return null
-      }
-    })(),
+    user: null as UserInfo | null,
     phone: '',
     verificationCode: ref(''),
     isLoading: false,
-    errorMessage: ''
+    errorMessage: '',
+    needSetup: false
   }),
 
   getters: {
@@ -32,6 +26,10 @@ export const useAuthStore = defineStore('auth', {
     
     needSetup(): boolean {
       return this.isLoggedIn && (this.user?.needSetup || false)
+    },
+
+    isNeedSetup(): boolean {
+      return this.user?.needSetup || false
     }
   },
 
@@ -123,21 +121,47 @@ export const useAuthStore = defineStore('auth', {
         console.log('Attempting phone login:', { phone, code })
         const response = await authApi.loginWithPhone({ phone, code })
         
-        if (response.data) {
-          const { token, user } = response.data
-          this.setToken(token)
-          this.setUserInfo(user)
-          console.log('Login successful:', {
-            isNewUser: user.isNewUser,
-            needSetup: user.needSetup
-          })
-          return true
+        console.log('Login response:', response)
+        
+        if (response.success) {
+          // 如果需要设置账号信息
+          if (response.data.needSetup) {
+            console.log('User needs setup:', response.data)
+            // 设置临时 token（如果有的话）
+            if (response.data.token) {
+              this.setToken(response.data.token)
+            }
+            
+            this.setUserInfo({
+              ...response.data.user,
+              needSetup: true
+            })
+            return true
+          }
+          
+          // 正常登录情况
+          if (response.data.token && response.data.user) {
+            const { token, user } = response.data
+            console.log('Normal login:', {
+              token: token.slice(0, 20),
+              user
+            })
+            
+            this.setToken(token)
+            this.setUserInfo({
+              ...user,
+              needSetup: false
+            })
+            return true
+          }
         }
+        
+        this.errorMessage = response.message || '登录失败：服务器响应异常'
         return false
       } catch (error: any) {
         console.error('Login error:', error)
-        this.errorMessage = error.message || '登录失败'
-        return false
+        this.errorMessage = error.response?.data?.message || error.message || '登录失败'
+        throw error
       } finally {
         this.isLoading = false
       }
@@ -148,31 +172,49 @@ export const useAuthStore = defineStore('auth', {
         this.isLoading = true
         console.log('Setup user params:', { phone, username, password })
         
+        // 确保在发送请求时带上临时 token
+        const token = this.token
+        console.log('Setup with token:', token ? token.slice(0, 20) + '...' : 'no token')
+        
         const response = await authApi.setupUser({ 
           phone,
           username,
           password
-        })
+        }, token) // 传递 token 到 API 请求
         
         if (response.success && response.data) {
           // 确保设置 token 和用户信息
-          const { token, user } = response.data
-          console.log('Setup successful:', { token: token.slice(0, 20), user })
+          const { token: newToken, user } = response.data
+          console.log('Setup successful:', { 
+            token: newToken.slice(0, 20), 
+            user 
+          })
           
-          this.setToken(token)
+          this.setToken(newToken)
           this.setUserInfo({
             ...user,
             needSetup: false  // 确保设置 needSetup 为 false
           })
-          
-          // 重新初始化用户状态
-          await this.initialize()
           
           return true
         }
         return false
       } catch (error: any) {
         console.error('Setup user error:', error)
+        // 如果是未登录错误，尝试使用手机号重新获取临时 token
+        if (error.message === '未登录') {
+          try {
+            // 重新获取临时 token
+            const tempResponse = await authApi.getTempToken(phone)
+            if (tempResponse.success && tempResponse.data?.token) {
+              this.setToken(tempResponse.data.token)
+              // 重试设置用户信息
+              return this.setupUser(phone, username, password)
+            }
+          } catch (retryError) {
+            console.error('Retry setup failed:', retryError)
+          }
+        }
         this.errorMessage = error.message || '设置用户信息失败'
         throw error
       } finally {
@@ -180,23 +222,17 @@ export const useAuthStore = defineStore('auth', {
       }
     },
 
-    async updateUserInfo(username: string) {
+    async updateUserInfo(data: { nickname?: string }) {
       try {
-        this.isLoading = true
-        const response = await authApi.updateUser(username)
-        
-        if (response.success && response.data) {
-          this.setUserInfo(response.data.user)
-          return response
-        } else {
-          throw new Error(response.message || '更新用户信息失败')
+        const response = await authApi.updateUserInfo(data)
+        if (response.success) {
+          this.user = response.data.user
+          return this.user
         }
-      } catch (error: any) {
-        console.error('Update user error:', error)
-        this.errorMessage = error.message || '更新用户信息失败，请重试'
+        throw new Error(response.message || '更新失败')
+      } catch (error) {
+        console.error('更新用户信息失败:', error)
         throw error
-      } finally {
-        this.isLoading = false
       }
     },
 
@@ -207,31 +243,15 @@ export const useAuthStore = defineStore('auth', {
     // 获取当前用户信息
     async getCurrentUser() {
       try {
-        this.isLoading = true
-        console.log('Getting current user with token:', this.token)
         const response = await authApi.getCurrentUser()
-        
-        console.log('Current user response:', response)
-        
-        if (response.success && response.data?.user) {
-          const user = response.data.user
-          console.log('Setting user info:', user)
-          this.setUserInfo({
-            ...user,
-            needSetup: !user.username  // 根据是否有用户名来判断是否需要设置
-          })
-          return user
+        if (response.success) {
+          this.user = response.data.user
+          return this.user
         }
-        
-        console.log('No user data, clearing auth')
-        this.clearAuth()
         return null
       } catch (error) {
-        console.error('Get current user error:', error)
-        this.clearAuth()
-        return null
-      } finally {
-        this.isLoading = false
+        console.error('获取用户信息失败:', error)
+        throw error
       }
     },
 
@@ -253,17 +273,11 @@ export const useAuthStore = defineStore('auth', {
 
     // 添加检查用户状态的方法
     checkUserStatus() {
-      console.log('Checking user status:', {
-        isLoggedIn: this.isLoggedIn,
-        user: this.user,
-        needSetup: this.user?.needSetup
-      })
-      
-      if (!this.isLoggedIn) {
+      if (!this.user) {
         return 'not-logged-in'
       }
       
-      if (this.user?.needSetup) {
+      if (this.user.needSetup) {
         return 'need-setup'
       }
       
@@ -281,26 +295,70 @@ export const useAuthStore = defineStore('auth', {
         console.log('Password login response:', response)
         
         // 检查 response 的结构
-        if (response && response.token && response.user) {
+        if (response.data && response.data.token && response.data.user) {
           console.log('Login successful:', {
-            token: response.token.slice(0, 20),
-            user: response.user
+            token: response.data.token.slice(0, 20),
+            user: response.data.user
           })
           
-          this.setToken(response.token)
-          this.setUserInfo(response.user)
+          this.setToken(response.data.token)
+          this.setUserInfo(response.data.user)
           return true
         }
         
-        this.errorMessage = '登录失败，请重试'
+        this.errorMessage = response.message || '登录失败，请重试'
         return false
       } catch (error: any) {
         console.error('Password login error:', error)
+        this.errorMessage = error.response?.data?.message || error.message || '登录失败'
+        throw error
+      } finally {
+        this.isLoading = false
+      }
+    },
+
+    // 添加微信登录方法
+    async loginWithWechat() {
+      this.isLoading = true
+      try {
+        // TODO: 实现微信登录逻辑
+        console.log('微信登录')
+      } catch (error: any) {
         this.errorMessage = error.message || '登录失败'
+        throw error
+      } finally {
+        this.isLoading = false
+      }
+    },
+
+    // 用户登出方法
+    logout() {
+      console.log('User logging out')
+      this.clearAuth()
+    },
+
+    // 添加保存会员信息的方法
+    async saveMemberInfo(data: MemberInfo) {
+      try {
+        this.isLoading = true
+        this.errorMessage = ''
+
+        console.log('Store层 - 开始保存会员信息:', data)
+        const response = await memberApi.saveMemberInfo(data)
+
+        if (!response.success) {
+          throw new Error(response.message || '保存失败')
+        }
+
+        console.log('Store层 - 会员信息保存成功')
+        return true
+      } catch (error: any) {
+        console.error('Store层 - 保存会员信息失败:', error)
+        this.errorMessage = error.message || '保存失败，请重试'
         throw error
       } finally {
         this.isLoading = false
       }
     }
   }
-}) 
+})

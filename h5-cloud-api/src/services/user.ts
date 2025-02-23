@@ -82,7 +82,7 @@ export const userService: UserService = {
   },
 
   // 根据手机号获取用户
-  async getUserByPhone(phone: string): Promise<UserRow | null> {
+  async findUserByPhone(phone: string): Promise<UserRow | null> {
     const pool = await Database.getInstance()
     const [rows] = await pool.execute<UserRow[]>(
       `SELECT u.*, us.avatar 
@@ -225,4 +225,4 @@ export const userService: UserService = {
       )
     }
   }
-} 
+}

@@ -1,5 +1,5 @@
 import request from '@/utils/request'
-import type { ApiResponse, LoginResponse } from '@/types'
+import type { ApiResponse, LoginResponse, MemberInfo } from '@/types'
 
 interface SetupUserResponse {
   success: boolean
@@ -71,5 +71,11 @@ export const authApi = {
 
   // 检查用户是否已登记
   checkUserRegistered: (phone: string) => 
-    request.post('/auth/check-registered', { phone })
+    request.post('/auth/check-registered', { phone }),
+
+  // 保存会员信息
+  saveMemberInfo: (data: MemberInfo): Promise<ApiResponse> => {
+    console.log('API层 - 发送保存会员信息请求:', data)
+    return request.post<ApiResponse>('/auth/member-info', data)
+  }
 } 

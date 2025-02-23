@@ -1,5 +1,6 @@
 import jwt from 'jsonwebtoken'
 import dotenv from 'dotenv'
+import type { TokenPayload } from '../types/jwt'
 
 dotenv.config()
 
@@ -7,11 +8,6 @@ const JWT_SECRET = process.env.JWT_SECRET
 
 if (!JWT_SECRET) {
   throw new Error('JWT_SECRET must be defined in environment variables')
-}
-
-interface TokenPayload {
-  id: number
-  phone: string
 }
 
 export const generateToken = (payload: TokenPayload): string => {

@@ -53,6 +53,7 @@ const code = ref('')
 const countdown = ref(60)
 const timer = ref<number | null>(null)
 const isLoading = ref(false)
+const codeArray = ref<string[]>(Array(6).fill(''))
 
 const formatPhone = computed(() => {
   const phone = store.phone
@@ -70,10 +71,11 @@ const handleInput = async (event: Event, index: number) => {
     return
   }
 
-  // 更新验证码
-  code.value = code.value.split('')
-  code.value[index] = value
-  code.value = code.value.join('')
+  // 更新验证码数组
+  codeArray.value[index] = value
+  
+  // 更新完整的验证码字符串
+  code.value = codeArray.value.join('')
 
   console.log('Current code:', code.value)
 
@@ -88,7 +90,7 @@ const handleInput = async (event: Event, index: number) => {
 
 // 处理键盘事件
 const handleKeydown = (event: KeyboardEvent, index: number) => {
-  if (event.key === 'Backspace' && !code.value[index] && index > 0) {
+  if (event.key === 'Backspace' && !codeArray.value[index] && index > 0) {
     inputs.value[index - 1].focus()
   }
 }
@@ -99,8 +101,13 @@ const handlePaste = (event: ClipboardEvent) => {
   const pastedData = event.clipboardData?.getData('text')
   if (!pastedData || !/^\d{6}$/.test(pastedData)) return
 
+  // 更新验证码数组和显示
+  const digits = pastedData.split('')
+  codeArray.value = digits
   code.value = pastedData
-  pastedData.split('').forEach((char, index) => {
+
+  // 更新输入框显示
+  digits.forEach((char, index) => {
     if (inputs.value[index]) {
       inputs.value[index].value = char
     }
@@ -118,17 +125,29 @@ const verifyCode = async () => {
     })
     
     const success = await store.loginWithPhone(store.phone, code.value)
+    console.log('Login result:', {
+      success,
+      user: store.user,
+      needSetup: store.user?.needSetup
+    })
+
     if (success) {
+      // 检查是否需要设置账号信息
       if (store.user?.needSetup) {
-        console.log('临时用户，跳转到设置页面')
-        router.push({
+        console.log('需要设置账号信息，跳转到设置页面')
+        await router.replace({
           name: 'setup-user',
           query: { phone: store.phone }
         })
       } else {
-        console.log('已激活用户，跳转到首页')
-        router.push('/')
+        console.log('登录成功，跳转到首页')
+        await router.replace('/')
       }
+    } else {
+      Toast.show({
+        content: store.errorMessage || '登录失败，请重试',
+        icon: 'fail'
+      })
     }
   } catch (error: any) {
     console.error('Verification failed:', error)
@@ -182,6 +201,15 @@ onMounted(() => {
   startCountdown()
   // 自动聚焦第一个输入框
   inputs.value[0]?.focus()
+
+  // 开发环境下显示测试验证码提示
+  if (import.meta.env.DEV) {
+    Toast.show({
+      content: '开发模式：请输入测试验证码 666666',
+      position: 'top',
+      duration: 3000
+    })
+  }
 })
 
 onUnmounted(() => {

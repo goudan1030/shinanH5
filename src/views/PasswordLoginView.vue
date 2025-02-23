@@ -119,13 +119,15 @@ const handleLogin = async () => {
       // 跳转到首页
       router.push('/')
     } else {
+      // 显示错误信息，但不跳转页面
       Toast.show({
-        content: store.errorMessage || '登录失败',
+        content: store.errorMessage || '手机号或密码错误',
         icon: 'error'
       })
     }
   } catch (error: any) {
     console.error('Login failed:', error)
+    // 显示错误信息，但不跳转页面
     Toast.show({
       content: error.message || '登录失败，请重试',
       icon: 'error'
@@ -247,4 +249,4 @@ const handleBackToSms = () => {
   text-align: center;
   margin-top: 10px;
 }
-</style> 
+</style>

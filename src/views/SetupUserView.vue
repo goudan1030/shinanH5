@@ -3,49 +3,49 @@
     <div class="gradient-header"></div>
     
     <div class="setup-container">
-      <h2 class="setup-title">设置账号信息</h2>
+      <h2 class="setup-title">信息登记</h2>
       
       <div class="setup-form">
-        <!-- 用户名输入框 -->
+        <!-- 姓名输入框 -->
         <div class="form-item">
           <input
-            v-model="username"
+            v-model="name"
             type="text"
-            placeholder="请输入用户名"
+            placeholder="姓名（选填）"
             maxlength="20"
             class="input-field"
           >
         </div>
 
-        <!-- 密码输入框 -->
+        <!-- 身份证输入框 -->
         <div class="form-item">
           <input
-            v-model="password"
-            type="password"
-            placeholder="请设置密码"
-            maxlength="20"
+            v-model="idCard"
+            type="text"
+            placeholder="身份证号（选填）"
+            maxlength="18"
             class="input-field"
           >
         </div>
 
-        <!-- 确认密码输入框 -->
+        <!-- 地址输入框 -->
         <div class="form-item">
           <input
-            v-model="confirmPassword"
-            type="password"
-            placeholder="请确认密码"
-            maxlength="20"
+            v-model="address"
+            type="text"
+            placeholder="地址（选填）"
+            maxlength="100"
             class="input-field"
           >
         </div>
 
         <!-- 提交按钮 -->
         <button
-          :disabled="!isValid || store.isLoading"
+          :disabled="store.isLoading"
           @click="handleSubmit"
           class="submit-btn"
         >
-          {{ store.isLoading ? '提交中...' : '完成' }}
+          {{ store.isLoading ? '提交中...' : '保存' }}
         </button>
 
         <!-- 错误信息显示 -->
@@ -58,92 +58,72 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, onMounted } from 'vue'
+import { ref, onMounted } from 'vue'
 import { useAuthStore } from '@/stores/auth'
-import { useRouter, useRoute } from 'vue-router'
+import { useRouter } from 'vue-router'
 import { Toast } from 'antd-mobile'
 
 const router = useRouter()
-const route = useRoute()
 const store = useAuthStore()
-const username = ref('')
-const password = ref('')
-const confirmPassword = ref('')
-const showPassword = ref(false)
-const showConfirmPassword = ref(false)
-
-// 表单验证
-const isValid = computed(() => {
-  return username.value.length >= 2 && 
-         password.value.length >= 6 && 
-         password.value === confirmPassword.value
-})
+const name = ref('')
+const idCard = ref('')
+const address = ref('')
 
 // 提交表单
 const handleSubmit = async () => {
   try {
-    const phone = store.phone || route.query.phone as string
-
-    if (!phone || !username.value || !password.value) {
-      console.log('Setup params:', {
-        phone,
-        username: username.value,
-        password: password.value
-      })
+    if (!store.user?.phone) {
       Toast.show({
-        content: '请填写完整信息',
+        content: '请先登录',
         icon: 'error'
       })
+      router.push('/login')
       return
     }
 
-    if (password.value !== confirmPassword.value) {
-      Toast.show({
-        content: '两次输入的密码不一致',
-        icon: 'error'
-      })
-      return
+    // 准备要保存的数据
+    const memberData = {
+      phone: store.user.phone,
+      name: name.value || undefined,
+      idCard: idCard.value || undefined,
+      address: address.value || undefined
     }
 
-    console.log('Submitting setup:', {
-      phone,
-      username: username.value
+    // 添加日志，确认数据
+    console.log('提交前确认数据:', memberData)
+
+    // 调用 store 的方法保存数据
+    await store.saveMemberInfo(memberData)
+
+    console.log('会员信息保存成功')
+    Toast.show({
+      content: '保存成功',
+      icon: 'success'
     })
 
-    const success = await store.setupUser(phone, username.value, password.value)
-    if (success) {
-      Toast.show({
-        content: '设置成功',
-        icon: 'success'
-      })
-      
-      // 强制清除并重新初始化
-      store.clearAuth()
-      await store.initialize()
-      
-      console.log('Setup complete, auth state:', {
-        isLoggedIn: store.isLoggedIn,
-        user: store.user
-      })
-      
+    // 等待 Toast 显示完成后再跳转
+    setTimeout(() => {
       router.push('/')
-    }
+    }, 1000)
+
   } catch (error: any) {
-    console.error('Setup failed:', error)
+    console.error('保存失败:', error)
     Toast.show({
-      content: error.message || '设置失败，请重试',
+      content: error.message || '保存失败，请重试',
       icon: 'error'
     })
   }
 }
 
-// 在组件挂载时检查是否有手机号
+// 在组件挂载时检查登录状态
 onMounted(() => {
-  const phone = store.phone || route.query.phone
-  if (!phone) {
-    console.error('No phone number found')
+  if (!store.user?.phone) {
+    console.error('未登录状态:', {
+      isLoggedIn: store.isLoggedIn,
+      user: store.user
+    })
     Toast.show({
-      content: '缺少手机号，请重新登录',
+      content: '请先登录',
       icon: 'error'
     })
     router.push('/login')

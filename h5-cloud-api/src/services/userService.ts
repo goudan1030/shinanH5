@@ -1,9 +1,12 @@
 import { ResultSetHeader, RowDataPacket } from 'mysql2'
 import Database from '../utils/db'
-import type { UserSettings } from '../types/user'
+import type { 
+  UserSettings, 
+  UserRow, 
+  UserService,
+  MemberInfo  // 添加 MemberInfo 导入
+} from '../types/user'
 import bcryptjs from 'bcryptjs'
-import type { UserRow } from '../types/user'
-import type { UserService } from '../types/user'
 
 // 导出 userService 对象，实现从 types/user.ts 导入的 UserService 接口
 export const userService: UserService = {
@@ -34,13 +37,15 @@ export const userService: UserService = {
       const userId = users[0].id
       const hashedPassword = await bcryptjs.hash(password, 10)
 
-      // 更新用户信息
+      // 更新用户信息，同时设置 nickname 为 username
       console.log('📝 更新用户信息')
       await connection.execute(
         `UPDATE users 
-         SET username = ?, password = ?
+         SET username = ?, 
+             nickname = ?,
+             password = ?
          WHERE id = ?`,
-        [username, hashedPassword, userId]
+        [username, username, hashedPassword, userId]
       )
 
       // 获取更新后的用户信息
@@ -54,7 +59,8 @@ export const userService: UserService = {
       console.log('✅ 用户设置完成:', {
         id: updatedUsers[0].id,
         phone: updatedUsers[0].phone,
-        username: updatedUsers[0].username
+        username: updatedUsers[0].username,
+        nickname: updatedUsers[0].nickname
       })
 
       return updatedUsers[0]
@@ -148,60 +154,75 @@ export const userService: UserService = {
     return isValid ? users[0] : null
   },
   
-  async updateUserInfo(userId: number, username: string): Promise<UserRow> {
+  async updateUserInfo(
+    userId: number, 
+    data: { username?: string; nickname?: string; avatar?: string }
+  ): Promise<UserRow> {
+    console.log('\n=== 👤 更新用户信息 ===')
+    console.log('用户ID:', userId)
+    console.log('更新数据:', data)
+
     const pool = await Database.getInstance()
-    
+    const connection = await pool.getConnection()
+
     try {
-      const connection = await pool.getConnection()
       await connection.beginTransaction()
 
-      try {
-        // 检查用户是否存在
-        console.log('Checking user existence...')
-        const [users] = await connection.execute<UserRow[]>(
-          'SELECT * FROM users WHERE id = ?',
-          [userId]
-        )
-        console.log('User check result:', users)
+      // 构建更新字段
+      const updateFields: string[] = []
+      const updateValues: any[] = []
 
-        if (!users[0]) {
-          throw new Error('用户不存在')
-        }
-
-        console.log('Updating user info...', { userId, username })
-
-        // 更新用户信息
-        await connection.execute(
-          'UPDATE users SET username = ? WHERE id = ?',
-          [username, userId]
-        )
-
-        console.log('Getting updated user info...')
-
-        // 获取更新后的用户信息
-        const [updatedUsers] = await connection.execute<UserRow[]>(
-          'SELECT * FROM users WHERE id = ?',
-          [userId]
-        )
-
-        await connection.commit()
-        connection.release()
-
-        if (!updatedUsers[0]) {
-          throw new Error('获取更新后的用户信息失败')
-        }
-
-        console.log('Update successful:', updatedUsers[0])
-        return updatedUsers[0]
-      } catch (error) {
-        await connection.rollback()
-        connection.release()
-        console.error('Transaction failed:', error)
-        throw error
+      if (data.username !== undefined) {
+        updateFields.push('username = ?')
+        updateValues.push(data.username)
       }
+
+      if (data.nickname !== undefined) {
+        updateFields.push('nickname = ?')
+        updateValues.push(data.nickname)
+      }
+
+      if (data.avatar !== undefined) {
+        updateFields.push('avatar = ?')
+        updateValues.push(data.avatar)
+      }
+
+      updateFields.push('updated_at = NOW()')
+      updateValues.push(userId) // 用于 WHERE 条件
+
+      // 执行更新
+      const [result] = await connection.execute(
+        `UPDATE users SET 
+          ${updateFields.join(', ')}
+        WHERE id = ?`,
+        updateValues
+      )
+
+      // 获取更新后的用户信息
+      const [users] = await connection.execute<UserRow[]>(
+        'SELECT * FROM users WHERE id = ?',
+        [userId]
+      )
+
+      if (!users[0]) {
+        throw new Error('用户不存在')
+      }
+
+      await connection.commit()
+      console.log('✅ 用户信息更新成功:', {
+        id: users[0].id,
+        username: users[0].username,
+        nickname: users[0].nickname,
+        avatar: users[0].avatar
+      })
+
+      return users[0]
     } catch (error) {
-      console.error('Update user info error:', error)
+      await connection.rollback()
+      console.error('❌ 更新用户信息失败:', error)
       throw error
+    } finally {
+      connection.release()
     }
   },
   
@@ -319,7 +340,7 @@ export const userService: UserService = {
         console.log('🆕 创建新用户')
         // 创建用户
         const [result] = await connection.execute<ResultSetHeader>(
-          'INSERT INTO users (phone, created_at) VALUES (?, NOW())',
+          'INSERT INTO users (phone, created_at, updated_at) VALUES (?, NOW(), NOW())',
           [phone]
         )
 
@@ -331,13 +352,15 @@ export const userService: UserService = {
         user = newUsers[0]
         console.log('✅ 用户创建成功:', {
           id: user.id,
-          phone: user.phone
+          phone: user.phone,
+          nickname: user.nickname
         })
       } else {
         user = users[0]
         console.log('✅ 找到已存在用户:', {
           id: user.id,
-          phone: user.phone
+          phone: user.phone,
+          nickname: user.nickname
         })
       }
 
@@ -428,4 +451,108 @@ export const userService: UserService = {
   async findUserByPhone(phone: string): Promise<UserRow | null> {
     return this.getUserByPhone(phone)
   },
+
+  // 保存会员信息到 members 表
+  async saveMemberInfo(data: MemberInfo): Promise<void> {
+    console.log('\n=== 💾 保存会员信息到数据库 ===')
+    console.log('待保存的数据:', {
+      phone: data.phone,
+      name: data.name || '未填写',
+      idCard: data.idCard || '未填写',
+      address: data.address || '未填写'
+    })
+
+    const pool = await Database.getInstance()
+    const connection = await pool.getConnection()
+
+    try {
+      await connection.beginTransaction()
+
+      // 检查是否已存在
+      const [existing] = await connection.execute<RowDataPacket[]>(
+        'SELECT id, name, id_card, address FROM members WHERE phone = ?',
+        [data.phone]
+      )
+
+      if (existing.length > 0) {
+        console.log('找到已存在记录:', existing[0])
+        // 更新现有记录
+        const [result] = await connection.execute(
+          `UPDATE members SET 
+            name = ?,
+            id_card = ?,
+            address = ?,
+            updated_at = NOW()
+          WHERE phone = ?`,
+          [
+            data.name || null,
+            data.idCard || null,
+            data.address || null,
+            data.phone
+          ]
+        )
+        console.log('✅ 会员信息更新成功:', {
+          phone: data.phone,
+          changedFields: {
+            name: data.name !== existing[0].name,
+            idCard: data.idCard !== existing[0].id_card,
+            address: data.address !== existing[0].address
+          }
+        })
+      } else {
+        console.log('未找到记录，创建新会员')
+        // 创建新记录
+        const [result] = await connection.execute(
+          `INSERT INTO members (
+            phone, name, id_card, address, created_at, updated_at
+          ) VALUES (?, ?, ?, ?, NOW(), NOW())`,
+          [
+            data.phone,
+            data.name || null,
+            data.idCard || null,
+            data.address || null
+          ]
+        )
+        console.log('✅ 会员信息创建成功:', {
+          phone: data.phone,
+          insertId: (result as any).insertId
+        })
+      }
+
+      await connection.commit()
+      console.log('✅ 数据库事务提交成功')
+    } catch (error) {
+      await connection.rollback()
+      console.error('❌ 保存会员信息失败:', {
+        error: error instanceof Error ? {
+          message: error.message,
+          stack: error.stack
+        } : error,
+        data: {
+          phone: data.phone,
+          hasName: !!data.name,
+          hasIdCard: !!data.idCard,
+          hasAddress: !!data.address
+        }
+      })
+      throw error
+    } finally {
+      connection.release()
+      console.log('=== 💾 保存会员信息完成 ===\n')
+    }
+  },
+
+  // 更新用户最后登录时间
+  async updateLastLoginTime(userId: number): Promise<void> {
+    const pool = await Database.getInstance()
+    try {
+      await pool.execute(
+        'UPDATE users SET last_login_at = NOW() WHERE id = ?',
+        [userId]
+      )
+    } catch (error) {
+      console.error('更新最后登录时间失败:', error)
+      throw error
+    }
+  }
 }

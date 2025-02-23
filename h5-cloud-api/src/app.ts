@@ -103,7 +103,7 @@ app.use((err: any, req: Request, res: Response, next: NextFunction) => {
   })
 })
 
-const PORT = process.env.PORT || 3000
+const PORT = process.env.PORT || 3001
 
 // 启动服务器
 const startServer = async () => {

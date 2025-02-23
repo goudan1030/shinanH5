@@ -79,8 +79,8 @@ const router = createRouter({
       name: 'setup-user',
       component: () => import('@/views/SetupUserView.vue'),
       meta: { 
-        requiresAuth: true, 
-        requiresSetup: false,
+        requiresAuth: false,
+        requiresSetup: true,
         title: '设置账号' 
       }
     },
@@ -124,20 +124,31 @@ const router = createRouter({
 })
 
 // 路由守卫
-router.beforeEach((to, from, next) => {
+router.beforeEach(async (to, from, next) => {
   console.log('\n=== 🛣️ 路由守卫 ===')
   console.log('从:', from.path)
   console.log('到:', to.path)
   
-  const token = localStorage.getItem('token')
-  console.log('当前 token:', token ? token.substring(0, 20) + '...' : '无')
-
   const authStore = useAuthStore()
-  const userStatus = authStore.checkUserStatus()
+  
+  // 检查用户状态
+  console.log('当前用户状态:', {
+    isLoggedIn: authStore.isLoggedIn,
+    user: authStore.user,
+    needSetup: authStore.user?.needSetup,
+    path: to.path
+  })
 
-  // 如果是临时用户，除了设置页面外，都重定向到设置页面
-  if (userStatus === 'need-setup' && to.name !== 'setup-user') {
-    console.log('临时用户访问其他页面，重定向到设置页面')
+  // 如果是设置页面，且有用户信息，允许访问
+  if (to.name === 'setup-user' && authStore.user) {
+    console.log('允许访问设置页面')
+    next()
+    return
+  }
+
+  // 如果用户需要设置账号信息，且目标不是设置页面，重定向到设置页面
+  if (authStore.user?.needSetup && to.name !== 'setup-user') {
+    console.log('用户需要设置账号信息，重定向到设置页面')
     next({
       name: 'setup-user',
       query: { phone: authStore.user?.phone }
@@ -145,16 +156,9 @@ router.beforeEach((to, from, next) => {
     return
   }
 
-  // 如果是已激活用户访问设置页面，重定向到首页
-  if (userStatus === 'active' && to.name === 'setup-user') {
-    console.log('已激活用户访问设置页面，重定向到首页')
-    next('/')
-    return
-  }
-
-  // 需要登录的页面
-  if (to.meta.requiresAuth && userStatus === 'not-logged-in') {
-    console.log('未登录用户访问需要登录的页面，重定向到登录页')
+  // 处理需要登录的页面
+  if (to.meta.requiresAuth && !authStore.isLoggedIn) {
+    console.log('需要登录的页面，重定向到登录页面')
     next({
       name: 'login',
       query: { redirect: to.fullPath }
@@ -173,4 +177,4 @@ router.afterEach((to) => {
   }
 })
 
-export default router 
+export default router

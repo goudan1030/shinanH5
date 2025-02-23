@@ -1,5 +1,5 @@
 // 测试数据
-export const TEST_PHONES = ['13800138000']
+export const TEST_PHONES = ['13800138000', '13900139000']
 
 // 模拟已存在的用户数据
 export const TEST_USERS = {
@@ -8,6 +8,12 @@ export const TEST_USERS = {
     phone: '13800138000',
     username: 'test_user',
     isNewUser: false  // 将测试用户设为已存在用户
+  },
+  '13900139000': {
+    id: 2,
+    phone: '13900139000',
+    username: 'test_user2',
+    isNewUser: true  // 将此测试用户设为新用户
   }
 }
 
@@ -15,6 +21,10 @@ export const TEST_CODES = {
   '13800138000': {
     valid: '123456',  // 正确的验证码
     invalid: '111111'  // 错误的验证码
+  },
+  '13900139000': {
+    valid: '666666',  // 正确的验证码
+    invalid: '000000'  // 错误的验证码
   }
 }
 
@@ -32,4 +42,4 @@ export const verifyTestCode = (phone: string, code: string): boolean => {
 // 获取测试用户
 export const getTestUser = (phone: string) => {
   return TEST_USERS[phone]
-} 
+}

@@ -59,6 +59,12 @@ class SmsService {
     console.log('\n=== 📱 发送验证码 ===')
     console.log('手机号:', phone)
     console.log('验证码:', code)
+
+    // 开发环境下模拟发送
+    if (process.env.NODE_ENV === 'development') {
+      console.log('开发模式：模拟发送验证码成功')
+      return
+    }
     
     try {
       const sendSmsRequest = new $Dysmsapi20170525.SendSmsRequest({
@@ -91,6 +97,12 @@ class SmsService {
       })
     } catch (error) {
       console.error('短信服务错误:', error)
+      
+      // 开发环境下忽略错误
+      if (process.env.NODE_ENV === 'development') {
+        console.log('开发模式：忽略短信发送错误')
+        return
+      }
       
       if (error instanceof Error) {
         if (error.message.includes('InvalidAccessKeyId')) {

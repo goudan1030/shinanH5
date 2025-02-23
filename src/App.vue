@@ -60,12 +60,6 @@ body {
 }
 
 /* 全局背景色 */
-:root {
-  --app-background: #F7F8FC;
-  --primary-color: #02C588;
-  --primary-color-hover: #02b37b;
-}
-
 body, #app {
   background-color: var(--app-background);
 }
@@ -78,17 +72,16 @@ body, #app {
 
 /* TDesign 全局主题色覆盖 */
 :root {
-  --td-brand-color: #02C588;
-  --td-brand-color-hover: #02b37b;
-  --td-brand-color-active: #029e6d;
-  --td-brand-color-disabled: rgba(2, 197, 136, 0.4);
-  --td-brand-color-light: rgba(2, 197, 136, 0.1);
-  --td-brand-color-focus: rgba(2, 197, 136, 0.2);
-  
   /* 链接和文字按钮颜色 */
   --td-link-color: #02C588;
   --td-text-color-primary: #02C588;
   --td-text-color-brand: #02C588;
+  
+  /* 单选框相关变量 */
+  --td-radio-checked-color: #02C588;
+  --td-radio-dot-color: #02C588;
+  --td-radio-hover-color: #02b37b;
+  --td-radio-disabled-color: rgba(2, 197, 136, 0.4);
 }
 
 /* TDesign 按钮文字颜色覆盖 */
@@ -107,5 +100,52 @@ body, #app {
 
 .t-dialog__confirm:active {
   color: #02b37b !important;
+}
+
+/* TDesign 步骤条样式覆盖 */
+.t-step .t-step-item .t-step-item__circle.t-step-item__circle--process {
+  background-color: #02C588 !important;
+  border-color: #02C588 !important;
+}
+
+.t-step .t-step-item .t-step-item__title.t-step-item__title--process {
+  color: #02C588 !important;
+}
+
+.t-step .t-step-item .t-step-item__circle.t-step-item__circle--finish {
+  color: #02C588 !important;
+  border-color: #02C588 !important;
+}
+
+.t-step .t-step-item .t-step-item__line.t-step-item__line--finish {
+  background-color: #02C588 !important;
+}
+
+.t-step .t-step-item .t-step-item__title.t-step-item__title--finish {
+  color: #333 !important;
+}
+
+/* 步骤条基础样式覆盖 */
+.t-steps {
+  --td-step-item-circle-size: 24px !important;
+  --td-steps-item-process-circle-bg: #02C588 !important;
+  --td-steps-item-process-circle-color: #fff !important;
+  --td-steps-item-process-title-color: #02C588 !important;
+  --td-steps-item-finish-circle-color: #02C588 !important;
+  --td-steps-item-finish-line-color: #02C588 !important;
+}
+
+/* 单选框样式覆盖 */
+.t-radio__icon {
+  color: #02C588 !important;
+}
+
+.t-radio__input:checked + .t-radio__label .t-radio__icon {
+  background-color: #02C588 !important;
+  border-color: #02C588 !important;
+}
+
+.t-radio__input:checked + .t-radio__label {
+  color: #02C588 !important;
 }
 </style>

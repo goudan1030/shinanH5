@@ -282,6 +282,7 @@ export const getCurrentUser: AsyncHandler = async (req, res) => {
         id: user.id,
         phone: user.phone,
         username: user.username || null,
+        nickname: user.nickname || null,
         avatar: user.avatar || null,
         isNewUser: !user.username,
         needSetup: !user.username
@@ -294,7 +295,7 @@ export const getCurrentUser: AsyncHandler = async (req, res) => {
 export const updateUser: AsyncHandler = async (req, res) => {
   try {
     const userId = req.user?.id
-    const { username } = req.body
+    const { username, nickname } = req.body
 
     if (!userId) {
       return res.status(401).json({
@@ -303,43 +304,7 @@ export const updateUser: AsyncHandler = async (req, res) => {
       })
     }
 
-    if (!username) {
-      return res.status(400).json({
-        success: false,
-        message: '用户名不能为空'
-      })
-    }
-
-    console.log('Updating user:', { userId, username })
-
-    // 先检查用户设置是否存在
-    const pool = await Database.getInstance()
-    const connection = await pool.getConnection()
-
-    try {
-      // 检查用户设置是否存在
-      const [settings] = await connection.execute(
-        'SELECT * FROM user_settings WHERE user_id = ?',
-        [userId]
-      )
-
-      // 如果不存在，先创建
-      if (!settings[0]) {
-        await connection.execute(
-          'INSERT INTO user_settings (user_id) VALUES (?)',
-          [userId]
-        )
-      }
-
-      connection.release()
-    } catch (error) {
-      connection.release()
-      throw error
-    }
-
-    const user = await userService.updateUserInfo(userId, username)
-
-    console.log('Update result:', user)
+    const user = await userService.updateUserInfo(userId, { username, nickname })
 
     res.json({
       success: true,
@@ -349,6 +314,7 @@ export const updateUser: AsyncHandler = async (req, res) => {
           id: user.id,
           phone: user.phone,
           username: user.username,
+          nickname: user.nickname,
           avatar: user.avatar
         }
       }
@@ -462,6 +428,7 @@ export const checkUserStatus: AsyncHandler = async (req, res) => {
       id: user.id,
       phone: user.phone,
       username: user.username,
+      nickname: user.nickname,
       isNewUser: !user.username,
       needSetup: !user.username
     })
@@ -475,6 +442,7 @@ export const checkUserStatus: AsyncHandler = async (req, res) => {
           id: user.id,
           phone: user.phone,
           username: user.username || null,
+          nickname: user.nickname || null,
           avatar: user.avatar || null
         }
       }

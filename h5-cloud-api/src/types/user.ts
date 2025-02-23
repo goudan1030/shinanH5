@@ -15,10 +15,19 @@ export interface UserRow extends RowDataPacket {
   id: number
   phone: string
   username?: string
+  nickname?: string
   password?: string
   avatar?: string
   created_at: Date
   updated_at: Date
+}
+
+// 添加会员信息接口
+export interface MemberInfo {
+  phone: string
+  name?: string
+  idCard?: string
+  address?: string
 }
 
 // 用户服务接口
@@ -29,13 +38,19 @@ export interface UserService {
   getUserById(userId: number): Promise<UserRow | null>
   getUserByPhone(phone: string): Promise<UserRow | null>
   verifyPassword(phone: string, password: string): Promise<UserRow | null>
-  updateUserInfo(userId: number, username: string): Promise<UserRow>
+  updateUserInfo(userId: number, data: { 
+    username?: string;
+    nickname?: string;
+    avatar?: string;
+  }): Promise<UserRow>
   getUserByPhoneOrCreate(phone: string): Promise<UserRow>
   saveVerificationCode(phone: string, code: string): Promise<void>
   verifyCode(phone: string, code: string): Promise<boolean>
   findOrCreateUserByPhone(phone: string): Promise<UserRow>
   checkUserRegistered(phone: string): Promise<boolean>
   findUserByPhone(phone: string): Promise<UserRow | null>
+  saveMemberInfo(data: MemberInfo): Promise<void>
+  updateLastLoginTime(userId: number): Promise<void>
 }
 
 export interface UserLoginResponse {
@@ -44,6 +59,7 @@ export interface UserLoginResponse {
     id: number
     phone: string
     username?: string
+    nickname?: string
     avatar?: string
     isNewUser: boolean
     needSetup: boolean
