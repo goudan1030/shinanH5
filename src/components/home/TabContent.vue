@@ -1,35 +1,28 @@
 <template>
-  <div class="tab-content">
-    <!-- Banner 区域 -->
-    <Banner :type="activeTab" />
+  <van-pull-refresh v-model="refreshing" @refresh="onRefresh">
+    <div class="tab-content" ref="contentRef">
+      <!-- Banner 区域 -->
+      <Banner :type="activeTab" />
 
-    <!-- 新人福利区域 - 只在"最新"标签页显示 -->
-    <NewUserBenefit v-if="showBenefit" />
+      <!-- 新人福利区域 - 只在"最新"标签页显示 -->
+      <NewUserBenefit v-if="showBenefit" />
 
-    <!-- 会员列表标题 -->
-    <div class="section-title">
-      {{ getSectionTitle }}
-    </div>
-
-    <!-- 根据标签页类型显示不同的内容 -->
-    <template v-if="activeTab === 'news'">
-      <div class="news-list">
-        <NewsCard
-          v-for="news in newsData"
-          :key="news.id"
-          :news="news"
-        />
+      <!-- 会员列表标题 -->
+      <div class="section-title">
+        {{ getSectionTitle }}
       </div>
-    </template>
-    <template v-else>
-      <List
-        v-model:loading="isLoading"
-        :finished="isFinished"
-        finished-text="没有更多了"
-        @load="onLoad"
-        :immediate-check="true"
-        :offset="300"
-      >
+
+      <!-- 根据标签页类型显示不同的内容 -->
+      <template v-if="activeTab === 'news'">
+        <div class="news-list">
+          <NewsCard
+            v-for="news in newsData"
+            :key="news.id"
+            :news="news"
+          />
+        </div>
+      </template>
+      <template v-else>
         <div class="member-list">
           <MemberCard
             v-for="member in displayMembers"
@@ -50,20 +43,63 @@
             }"
           />
         </div>
-      </List>
-    </template>
-  </div>
+        <!-- 加载更多触发器 -->
+        <div 
+          ref="loadingTrigger" 
+          class="loading-trigger"
+          v-show="!isFinished"
+        >
+          <van-loading v-if="isLoading" type="spinner" size="24px" vertical>加载中...</van-loading>
+        </div>
+      </template>
+
+      <!-- 返回顶部按钮 -->
+      <van-back-top 
+        :right="16" 
+        :bottom="80"
+        :offset="400"
+        :immediate="false"
+        target=".tab-content"
+      >
+        <div class="back-top-btn">
+          <van-icon name="arrow-up" />
+        </div>
+      </van-back-top>
+    </div>
+  </van-pull-refresh>
 </template>
 
 <script setup lang="ts">
-import { ref, computed } from 'vue'
-import { List } from 'vant'
+import { ref, computed, onMounted, onUnmounted } from 'vue'
+import { 
+  Loading as VanLoading,
+  PullRefresh as VanPullRefresh,
+  BackTop as VanBackTop,
+  Icon as VanIcon
+} from 'vant'
 import Banner from './Banner.vue'
 import MemberCard from './MemberCard.vue'
 import NewUserBenefit from './NewUserBenefit.vue'
 import NewsCard from './NewsCard.vue'
+import { throttle } from 'lodash-es'
 
-// 定义 props 类型
+// 添加下拉刷新相关状态
+const refreshing = ref(false)
+const contentRef = ref<HTMLElement | null>(null)
+
+// 下拉刷新处理函数
+const onRefresh = async () => {
+  try {
+    // 重置页码
+    currentPage.value = 1
+    // 触发外部刷新事件
+    await emit('refresh')
+  } finally {
+    refreshing.value = false
+  }
+}
+
+// 修改 props 和 emits 定义
 interface Props {
   activeTab: 'latest' | 'hot' | 'news'
   members: any[]
@@ -71,15 +107,18 @@ interface Props {
 }
 
 const props = defineProps<Props>()
+const emit = defineEmits(['load', 'refresh'])
 
 const PAGE_SIZE = 10
 const currentPage = ref(1)
 const isLoading = ref(false)
+const loadingTrigger = ref<HTMLElement | null>(null)
+const observer = ref<IntersectionObserver | null>(null)
 
-// 只在"最新"标签页显示新人福利
-const showBenefit = computed(() => {
-  return props.activeTab === 'latest'
-})
+// 计算属性
+const displayMembers = computed(() => props.members)
+const isFinished = computed(() => displayMembers.value.length >= props.total)
+const showBenefit = computed(() => props.activeTab === 'latest')
 
 // 根据不同标签页显示不同标题
 const getSectionTitle = computed(() => {
@@ -120,25 +159,53 @@ const newsData = ref([
   }
 ])
 
-// 计算当前显示的会员列表
-const displayMembers = computed(() => {
-  return props.members.slice(0, currentPage.value * PAGE_SIZE)
-})
-
-const isFinished = computed(() => {
-  return displayMembers.value.length >= props.members.length
-})
-
-// 加载更多数据
-const onLoad = () => {
+// 添加节流的加载函数
+const throttledLoad = throttle(async () => {
   if (isLoading.value || isFinished.value) return
   
   isLoading.value = true
-  setTimeout(() => {
+  try {
+    // 添加最小加载时间
+    const loadStartTime = Date.now()
+    await emit('load', currentPage.value + 1)
+    
+    // 确保加载动画至少显示 500ms
+    const loadTime = Date.now() - loadStartTime
+    if (loadTime < 500) {
+      await new Promise(resolve => setTimeout(resolve, 500 - loadTime))
+    }
+    
     currentPage.value++
+  } finally {
     isLoading.value = false
-  }, 300)
-}
+  }
+}, 1000, { leading: true, trailing: false }) // 1秒内只触发一次，立即执行
+
+// 修改观察器配置
+onMounted(() => {
+  observer.value = new IntersectionObserver(async (entries) => {
+    const target = entries[0]
+    if (target.isIntersecting) {
+      throttledLoad()
+    }
+  }, {
+    threshold: 0.1,
+    rootMargin: '100px 0px' // 提前 100px 触发加载
+  })
+
+  if (loadingTrigger.value) {
+    observer.value.observe(loadingTrigger.value)
+  }
+})
+
+// 在组件卸载时清理
+onUnmounted(() => {
+  if (observer.value) {
+    observer.value.disconnect()
+  }
+  // 取消未执行的节流函数
+  throttledLoad.cancel()
+})
 
 // 修改映射函数以匹配数据库中的实际值
 const getEducationLabel = (education: string) => {
@@ -178,6 +245,8 @@ const getMarriageCertLabel = (cert: string) => {
   flex: 1;
   overflow-y: auto;
   -webkit-overflow-scrolling: touch;
+  padding-bottom: 50px; /* 为底部加载器预留空间 */
+  height: calc(100vh - 100px); /* 添加固定高度 */
 }
 
 .content-area {
@@ -227,5 +296,60 @@ const getMarriageCertLabel = (cert: string) => {
   color: #999;
   font-size: 14px;
   text-align: center;
+}
+
+.loading-trigger {
+  height: 60px; /* 增加高度 */
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #999;
+  margin: 10px 0;
+  transition: opacity 0.3s; /* 添加过渡效果 */
+}
+
+/* 添加淡入淡出效果 */
+.loading-trigger:not(:empty) {
+  animation: fadeIn 0.3s ease-in-out;
+}
+
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+/* 自定义返回顶部按钮样式 */
+.back-top-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 40px;
+  height: 40px;
+  color: #fff;
+  background: #02C588;
+  border-radius: 50%;
+  box-shadow: 0 2px 8px rgba(2, 197, 136, 0.3);
+  transition: opacity 0.3s;
+}
+
+.back-top-btn:active {
+  opacity: 0.8;
+}
+
+/* 自定义下拉刷新样式 */
+:deep(.van-pull-refresh) {
+  overflow: visible;
+}
+
+:deep(.van-pull-refresh__track) {
+  min-height: calc(100vh - 100px);
+}
+
+:deep(.van-pull-refresh__head) {
+  color: #02C588;
 }
 </style> 

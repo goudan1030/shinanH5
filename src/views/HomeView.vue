@@ -11,7 +11,13 @@
         />
         
         <!-- 标签页内容 -->
-        <TabContent :active-tab="activeTopTab" />
+        <TabContent 
+          :active-tab="activeTopTab"
+          :members="memberList"
+          :total="total"
+          @load="handleLoadMore"
+          @refresh="handleRefresh"
+        />
       </div>
 
       <!-- 底部导航栏 -->
@@ -58,7 +64,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed } from 'vue'
+import { ref, computed, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { Icon as VanIcon } from 'vant'
 import SafeArea from '@/components/layout/SafeArea.vue'
@@ -76,6 +82,7 @@ import {
   NotificationIcon,
   UserIcon,
 } from 'tdesign-icons-vue-next'
+import { memberApi } from '@/api/member'
 
 const router = useRouter()
 const activeTab = ref('home')
@@ -115,19 +122,105 @@ const handleFilter = () => {
   console.log('Filter clicked')
 }
 
+// 会员列表数据
+const memberList = ref([])
+const total = ref(0)
+
+// 获取会员列表
+const loadMembers = async () => {
+  try {
+    const res = await memberApi.getPublicMembers({
+      page: 1,
+      pageSize: 20,
+      filters: {
+        gender: '',
+        ageStart: undefined,
+        ageEnd: undefined,
+        heightStart: undefined,
+        heightEnd: undefined,
+        education: '',
+        location: ''
+      }
+    })
+    
+    if (res.success) {
+      memberList.value = res.data.list
+      total.value = res.data.total
+    }
+  } catch (error) {
+    console.error('获取会员列表失败:', error)
+  }
+}
+
+// 刷新数据
 const onRefresh = async () => {
   try {
-    // 这里添加刷新数据的逻辑
-    await Promise.all([
-      // 刷新统计数据
-      // 刷新列表数据
-    ])
+    await loadMembers()
   } catch (error) {
     console.error('刷新失败:', error)
   } finally {
     refreshing.value = false
   }
 }
+
+// 添加加载更多处理函数
+const handleLoadMore = async (page: number) => {
+  try {
+    const res = await memberApi.getPublicMembers({
+      page,
+      pageSize: 20,
+      filters: {
+        gender: '',
+        ageStart: undefined,
+        ageEnd: undefined,
+        heightStart: undefined,
+        heightEnd: undefined,
+        education: '',
+        location: ''
+      }
+    })
+    
+    if (res.success) {
+      memberList.value = [...memberList.value, ...res.data.list]
+      total.value = res.data.total
+    }
+    
+    // 等待一下，让 UI 有时间更新
+    await new Promise(resolve => setTimeout(resolve, 300))
+  } catch (error) {
+    console.error('加载更多会员失败:', error)
+  }
+}
+
+// 添加刷新处理函数
+const handleRefresh = async () => {
+  try {
+    const res = await memberApi.getPublicMembers({
+      page: 1,
+      pageSize: 20,
+      filters: {
+        gender: '',
+        ageStart: undefined,
+        ageEnd: undefined,
+        heightStart: undefined,
+        heightEnd: undefined,
+        education: '',
+        location: ''
+      }
+    })
+    
+    if (res.success) {
+      memberList.value = res.data.list
+      total.value = res.data.total
+    }
+  } catch (error) {
+    console.error('刷新会员列表失败:', error)
+  }
+}
+
+onMounted(() => {
+  loadMembers()  // 页面加载时获取会员列表
+})
 </script>
 
 <style scoped>
