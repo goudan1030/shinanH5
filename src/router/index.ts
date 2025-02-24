@@ -37,10 +37,11 @@ const router = createRouter({
     },
     {
       path: '/register-info',
-      name: 'registerInfo',
-      component: () => import('@/views/RegisterInfoView.vue'),
+      name: 'register-info',
+      component: RegisterInfoView,
       meta: { 
         requiresAuth: false,
+        requiresSetup: true,
         title: '信息登记' 
       }
     },
@@ -73,16 +74,6 @@ const router = createRouter({
       name: 'password-login',
       component: () => import('@/views/PasswordLoginView.vue'),
       meta: { requiresAuth: false, title: '密码登录' }
-    },
-    {
-      path: '/setup-user',
-      name: 'setup-user',
-      component: () => import('@/views/SetupUserView.vue'),
-      meta: { 
-        requiresAuth: false,
-        requiresSetup: true,
-        title: '设置账号' 
-      }
     },
     {
       path: '/favorites',
@@ -135,22 +126,22 @@ router.beforeEach(async (to, from, next) => {
   console.log('当前用户状态:', {
     isLoggedIn: authStore.isLoggedIn,
     user: authStore.user,
-    needSetup: authStore.user?.needSetup,
+    isNewUser: authStore.user?.isNewUser,
     path: to.path
   })
 
-  // 如果是设置页面，且有用户信息，允许访问
-  if (to.name === 'setup-user' && authStore.user) {
-    console.log('允许访问设置页面')
+  // 如果是注册信息页面，且有用户信息，允许访问
+  if (to.name === 'register-info' && authStore.user) {
+    console.log('允许访问注册信息页面')
     next()
     return
   }
 
-  // 如果用户需要设置账号信息，且目标不是设置页面，重定向到设置页面
-  if (authStore.user?.needSetup && to.name !== 'setup-user') {
-    console.log('用户需要设置账号信息，重定向到设置页面')
+  // 如果是新用户，且目标不是注册信息页面，重定向到注册信息页面
+  if (authStore.user?.isNewUser && to.name !== 'register-info') {
+    console.log('新用户需要完善信息，重定向到注册信息页面')
     next({
-      name: 'setup-user',
+      name: 'register-info',
       query: { phone: authStore.user?.phone }
     })
     return
