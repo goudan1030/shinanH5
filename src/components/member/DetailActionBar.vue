@@ -8,12 +8,17 @@
       联系Ta
     </div>
   </div>
+
+  <!-- 添加客服弹窗 -->
+  <ServicePopup v-model:visible="showServicePopup" />
 </template>
 
 <script setup lang="ts">
-import { ref } from 'vue'
+import { ref, onMounted } from 'vue'
 import { showToast, Icon } from 'vant'
 import { useAuthStore } from '@/stores/auth'
+import { favoriteApi } from '@/api/favorite'
+import ServicePopup from '@/components/common/ServicePopup.vue'
 
 const props = defineProps<{
   memberId: string
@@ -21,16 +26,40 @@ const props = defineProps<{
 
 const authStore = useAuthStore()
 const isFavorite = ref(false)
+const showServicePopup = ref(false)
+
+// 检查收藏状态
+const checkFavorite = async () => {
+  if (!authStore.isLoggedIn) return
+  
+  try {
+    const res = await favoriteApi.check(props.memberId, 'member')
+    isFavorite.value = res.data
+  } catch (error) {
+    console.error('检查收藏状态失败:', error)
+  }
+}
 
 // 处理收藏
-const handleFavorite = () => {
+const handleFavorite = async () => {
   if (!authStore.isLoggedIn) {
     showToast('请先登录')
     return
   }
-  // TODO: 调用收藏API
-  isFavorite.value = !isFavorite.value
-  showToast(isFavorite.value ? '收藏成功' : '已取消收藏')
+
+  try {
+    if (isFavorite.value) {
+      await favoriteApi.remove(props.memberId, 'member')
+      showToast('已取消收藏')
+    } else {
+      await favoriteApi.add(props.memberId, 'member')
+      showToast('收藏成功')
+    }
+    isFavorite.value = !isFavorite.value
+  } catch (error) {
+    console.error('收藏操作失败:', error)
+    showToast('操作失败,请重试')
+  }
 }
 
 // 处理联系
@@ -39,9 +68,14 @@ const handleContact = () => {
     showToast('请先登录')
     return
   }
-  // TODO: 显示联系方式
-  showToast('暂未开放')
+  // 显示客服二维码弹窗
+  showServicePopup.value = true
 }
+
+// 组件挂载时检查收藏状态
+onMounted(() => {
+  checkFavorite()
+})
 </script>
 
 <style scoped>

@@ -11,7 +11,11 @@
         <!-- 用户基本信息 -->
         <div class="user-info">
           <div class="avatar-wrapper">
-            <img :src="member?.avatar" class="avatar" />
+            <img 
+              :src="member?.avatar || getDefaultAvatar(member?.gender)" 
+              class="avatar"
+              :alt="member?.nickname"
+            />
             <div class="gender-tag" :class="member?.gender">
               {{ member?.gender === 'male' ? '男' : '女' }}
             </div>
@@ -143,6 +147,8 @@ import {
   getMappedValue 
 } from '@/utils/memberMapping'
 import DetailActionBar from '@/components/member/DetailActionBar.vue'
+import maleAvatar from '@/assets/images/male.svg'
+import femaleAvatar from '@/assets/images/female.svg'
 
 const route = useRoute()
 const router = useRouter()
@@ -194,6 +200,11 @@ const formatAddress = (province?: string, city?: string, district?: string): str
   return parts.join(' ') || '暂无'
 }
 
+// 获取默认头像
+const getDefaultAvatar = (gender?: string) => {
+  return gender === 'male' ? maleAvatar : femaleAvatar
+}
+
 onMounted(() => {
   loadMemberDetail()
 })
@@ -234,6 +245,7 @@ onMounted(() => {
   object-fit: cover;
   border: 2px solid #fff;
   box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+  background-color: #f5f5f5;
 }
 
 .gender-tag {

@@ -10,6 +10,7 @@ import path from 'path'
 import routes from './routes'
 import registerRouter from './routes/register'
 import memberRoutes from './routes/member'
+import favoriteRouter from './routes/favorite'
 
 // 确保在最开始就加载环境变量
 const envPath = path.resolve(__dirname, '../.env')
@@ -96,6 +97,7 @@ app.use('/api/user', userRoutes)
 app.use('/api', routes)
 app.use('/api/register', registerRouter)
 app.use('/api/member', memberRoutes)
+app.use('/api/favorites', favoriteRouter)
 
 // 错误处理
 app.use(errorHandler)
