@@ -22,27 +22,59 @@
       </div>
     </template>
     <template v-else>
-      <div class="member-list">
-        <MemberCard
-          v-for="member in members"
-          :key="member.id"
-          :member="member"
-        />
-      </div>
+      <List
+        v-model:loading="isLoading"
+        :finished="isFinished"
+        finished-text="没有更多了"
+        @load="onLoad"
+        :immediate-check="true"
+        :offset="300"
+      >
+        <div class="member-list">
+          <MemberCard
+            v-for="member in displayMembers"
+            :key="member.member_no"
+            :member="{
+              id: member.member_no,
+              avatar: 'https://img.yzcdn.cn/vant/cat.jpeg',
+              nickname: member.nickname || '会员' + member.member_no,
+              gender: member.gender,
+              city: `${member.province || ''} ${member.city || ''}`,
+              birthYear: member.birth_year,
+              education: getEducationLabel(member.education),
+              job: member.occupation,
+              introduction: member.self_description,
+              childNeeds: [getChildrenPlanLabel(member.children_plan)],
+              marriageNeeds: [getMarriageCertLabel(member.marriage_cert)],
+              updateTime: new Date(member.updated_at)
+            }"
+          />
+        </div>
+      </List>
     </template>
   </div>
 </template>
 
 <script setup lang="ts">
 import { ref, computed } from 'vue'
+import { List } from 'vant'
 import Banner from './Banner.vue'
 import MemberCard from './MemberCard.vue'
 import NewUserBenefit from './NewUserBenefit.vue'
 import NewsCard from './NewsCard.vue'
 
-const props = defineProps<{
-  activeTab: string
-}>()
+// 定义 props 类型
+interface Props {
+  activeTab: 'latest' | 'hot' | 'news'
+  members: any[]
+  total: number
+}
+
+const props = defineProps<Props>()
+
+const PAGE_SIZE = 10
+const currentPage = ref(1)
+const isLoading = ref(false)
 
 // 只在"最新"标签页显示新人福利
 const showBenefit = computed(() => {
@@ -62,85 +94,6 @@ const getSectionTitle = computed(() => {
       return ''
   }
 })
-
-// 模拟数据
-const members = ref([
-  {
-    id: '1',
-    avatar: 'https://img.yzcdn.cn/vant/cat.jpeg',
-    nickname: '阳光男孩',
-    gender: 'male',
-    city: '深圳',
-    birthYear: 1985,
-    birthMonth: 6,
-    education: '本科',
-    job: '产品经理',
-    introduction: '身高178，计算机专业，深圳某互联网公司产品经理，喜欢运动和阅读。希望找一个温柔善良的女生共度余生。',
-    childNeeds: ['想要孩子', '接受对方带孩子'],
-    marriageNeeds: ['一年内领证', '共同生活'],
-    updateTime: new Date('2024-01-20')
-  },
-  {
-    id: '2',
-    avatar: 'https://img.yzcdn.cn/vant/cat.jpeg',
-    nickname: '温柔女孩',
-    gender: 'female',
-    city: '北京',
-    birthYear: 1990,
-    birthMonth: 3,
-    education: '研究生',
-    job: '设计师',
-    introduction: '身高165，性格开朗，喜欢旅行和美食。希望找一个成熟稳重的男生，共同经营美好生活。',
-    childNeeds: ['暂不要孩子', '接受对方带孩子'],
-    marriageNeeds: ['两年内领证', '共同生活'],
-    updateTime: new Date('2024-02-15')
-  },
-  {
-    id: '3',
-    avatar: 'https://img.yzcdn.cn/vant/cat.jpeg',
-    nickname: '事业男',
-    gender: 'male',
-    city: '上海',
-    birthYear: 1988,
-    birthMonth: 9,
-    education: '本科',
-    job: '创业者',
-    introduction: '身高180，创业公司CEO，工作稳定，有房有车。寻找一位善解人意的女生，共创美好未来。',
-    childNeeds: ['想要孩子'],
-    marriageNeeds: ['一年内领证', '共同生活'],
-    updateTime: new Date('2024-02-18')
-  },
-  {
-    id: '4',
-    avatar: 'https://img.yzcdn.cn/vant/cat.jpeg',
-    nickname: '知性女生',
-    gender: 'female',
-    city: '广州',
-    birthYear: 1992,
-    birthMonth: 12,
-    education: '研究生',
-    job: '大学教师',
-    introduction: '身高162，性格温和，喜欢读书和音乐。希望找一个有共同爱好的伴侣，共度美好时光。',
-    childNeeds: ['想要孩子'],
-    marriageNeeds: ['三年内领证'],
-    updateTime: new Date('2024-02-19')
-  },
-  {
-    id: '5',
-    avatar: 'https://img.yzcdn.cn/vant/cat.jpeg',
-    nickname: '工程师',
-    gender: 'male',
-    city: '杭州',
-    birthYear: 1989,
-    birthMonth: 7,
-    education: '本科',
-    job: '软件工程师',
-    introduction: '身高175，互联网公司高级工程师，性格随和，有稳定工作和房产。寻找一位温柔贤惠的女生。',
-    childNeeds: ['想要孩子', '接受对方带孩子'],
-    marriageNeeds: ['两年内领证', '共同生活'],
-    updateTime: new Date()
-  }
-])
 
 // 资讯数据
 const newsData = ref([
@@ -166,6 +119,58 @@ const newsData = ref([
     publishTime: new Date('2024-02-18')
   }
 ])
+
+// 计算当前显示的会员列表
+const displayMembers = computed(() => {
+  return props.members.slice(0, currentPage.value * PAGE_SIZE)
+})
+
+const isFinished = computed(() => {
+  return displayMembers.value.length >= props.members.length
+})
+
+// 加载更多数据
+const onLoad = () => {
+  if (isLoading.value || isFinished.value) return
+  
+  isLoading.value = true
+  setTimeout(() => {
+    currentPage.value++
+    isLoading.value = false
+  }, 300)
+}
+
+// 修改映射函数以匹配数据库中的实际值
+const getEducationLabel = (education: string) => {
+  const map: Record<string, string> = {
+    'HIGH_SCHOOL': '高中',
+    'JUNIOR_COLLEGE': '大专',
+    'BACHELOR': '本科',
+    'MASTER': '硕士',
+    'DOCTOR': '博士',
+    'OTHER': '其他'
+  }
+  return map[education] || education
+}
+
+const getChildrenPlanLabel = (plan: string) => {
+  const map: Record<string, string> = {
+    'BOTH': '要孩子',
+    'NONE': '不要孩子',
+    'NEGOTIATE': '双方协商',
+    'TOGETHER': '一起要'
+  }
+  return map[plan] || plan
+}
+
+const getMarriageCertLabel = (cert: string) => {
+  const map: Record<string, string> = {
+    'WANT': '要领证',
+    'DONT_WANT': '不领证',
+    'NEGOTIATE': '双方协商'
+  }
+  return map[cert] || cert
+}
 </script>
 
 <style scoped>
@@ -205,5 +210,22 @@ const newsData = ref([
 
 .news-list {
   margin-top: 16px;
+}
+
+.load-more {
+  text-align: center;
+  margin: 20px 0;
+}
+
+:deep(.van-list) {
+  min-height: 100px;
+  overflow: visible;
+}
+
+:deep(.van-list__loading), :deep(.van-list__finished-text) {
+  padding: 16px 0;
+  color: #999;
+  font-size: 14px;
+  text-align: center;
 }
 </style> 

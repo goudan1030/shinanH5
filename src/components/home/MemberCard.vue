@@ -14,7 +14,7 @@
         <!-- 详细信息一行，城市靠右 -->
         <div class="user-details">
           <div class="details-left">
-            <span class="detail-item">{{ member.birthYear }}年{{ member.birthMonth }}月</span>
+            <span class="detail-item">{{ member.birthYear }}年</span>
             <span class="dot">·</span>
             <span class="detail-item">{{ member.education }}</span>
             <span class="dot">·</span>
@@ -73,7 +73,6 @@ interface Member {
   gender: 'male' | 'female'
   city: string
   birthYear: number
-  birthMonth: number
   education: string
   job: string
   introduction: string
