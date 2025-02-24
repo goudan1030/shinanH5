@@ -13,7 +13,7 @@
 - [部署文档](./deployment.md)
 
 ## 项目说明
-H5 Cloud 是一个基于 Vue 3 + Vant 开发的移动端 Web 应用。
+H5 Cloud 是一个基于 Vue 3 + Vant 开发的形婚互助平台。
 
 ### 技术栈
 - Vue 3

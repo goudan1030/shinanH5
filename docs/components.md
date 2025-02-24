@@ -14,5 +14,23 @@
   - 体重: 30-150kg
   - ... 
 
+### MemberDetailView
+- 路径: `src/views/MemberDetailView.vue`
+- 用途: 会员详情页面
+- 主要功能:
+  - 显示会员基本信息
+  - 显示形婚要求
+  - 显示形婚说明
+  - 支持收藏和联系功能
+
 ## 公共组件
 (待补充) 
+
+### MemberCard
+- 路径: `src/components/home/MemberCard.vue`
+- 用途: 会员卡片组件
+- 主要功能:
+  - 显示会员头像和基本信息
+  - 显示形婚要求标签
+  - 显示更新时间
+  - 点击跳转到详情页 

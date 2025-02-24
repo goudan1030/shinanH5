@@ -77,7 +77,7 @@
   ```
 
 ### 4. 获取会员列表
-- 路径: `/api/members/public`
+- 路径: `/api/member/public`
 - 方法: GET
 - 参数:
   ```typescript
