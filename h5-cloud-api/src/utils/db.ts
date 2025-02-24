@@ -1,63 +1,79 @@
-import mysql from 'mysql2/promise'
+import mysql, { Pool, PoolConnection } from 'mysql2/promise'
 import dotenv from 'dotenv'
+import fs from 'fs'
+import path from 'path'
 
 dotenv.config()
 
-class Database {
-  private static instance: mysql.Pool | null = null
+export class Database {
+  private static instance: Pool
+  private static isInitialized = false
 
-  private static async createPool(retries = 3, delay = 2000): Promise<mysql.Pool> {
-    for (let i = 0; i < retries; i++) {
-      try {
-        console.log(`Attempting to connect to database (attempt ${i + 1}/${retries})...`)
-        console.log(`Database host: ${process.env.DB_HOST}`)
-        
-        const pool = mysql.createPool({
-          host: process.env.DB_HOST,
-          port: Number(process.env.DB_PORT),
-          user: process.env.DB_USER,
-          password: process.env.DB_PASSWORD,
-          database: process.env.DB_NAME,
-          waitForConnections: true,
-          connectionLimit: 10,
-          queueLimit: 0,
-          connectTimeout: 10000,
-          // 增加更多连接选项
-          enableKeepAlive: true,
-          keepAliveInitialDelay: 0,
-          multipleStatements: true,
-          timezone: '+08:00'
-        })
+  public static async getInstance(): Promise<Pool> {
+    if (!Database.instance) {
+      console.log('\n=== 🔌 初始化数据库连接 ===')
+      
+      Database.instance = mysql.createPool({
+        host: process.env.DB_HOST,
+        user: process.env.DB_USER,
+        password: process.env.DB_PASSWORD,
+        database: process.env.DB_NAME,
+        waitForConnections: true,
+        connectionLimit: 10,
+        queueLimit: 0,
+        multipleStatements: true  // 允许执行多条SQL语句
+      })
 
-        // 测试连接
-        const connection = await pool.getConnection()
-        await connection.ping()
-        connection.release()
-        
-        console.log('Database connected successfully!')
-        return pool
-      } catch (error) {
-        console.error(`Database connection attempt ${i + 1} failed:`, error)
-        console.error('Error details:', {
-          code: (error as any).code,
-          errno: (error as any).errno,
-          sqlState: (error as any).sqlState,
-          sqlMessage: (error as any).sqlMessage
-        })
-        
-        if (i === retries - 1) throw error
-        console.log(`Retrying in ${delay/1000} seconds...`)
-        await new Promise(resolve => setTimeout(resolve, delay))
+      // 只在第一次初始化时创建表
+      if (!Database.isInitialized) {
+        await Database.initTables()
+        Database.isInitialized = true
       }
     }
-    throw new Error('Failed to connect to database after multiple attempts')
+    return Database.instance
   }
 
-  public static async getInstance(): Promise<mysql.Pool> {
-    if (!Database.instance) {
-      Database.instance = await Database.createPool()
+  private static async initTables(): Promise<void> {
+    console.log('\n=== 📦 初始化数据表 ===')
+    const connection = await Database.instance.getConnection()
+
+    try {
+      // 创建用户资料表
+      await connection.query(`
+        CREATE TABLE IF NOT EXISTS user_profiles (
+          id INT PRIMARY KEY AUTO_INCREMENT,
+          user_id INT NOT NULL UNIQUE,
+          gender VARCHAR(10),
+          birthday VARCHAR(10),
+          height VARCHAR(10),
+          weight VARCHAR(10),
+          orientation VARCHAR(20),
+          occupation VARCHAR(50),
+          education VARCHAR(50),
+          marital_status VARCHAR(20),
+          residence VARCHAR(100),
+          hometown VARCHAR(100),
+          assets VARCHAR(20),
+          expected_location VARCHAR(100),
+          child_intent VARCHAR(20),
+          marriage_requirement VARCHAR(20),
+          self_intro TEXT,
+          expectations TEXT,
+          wechat VARCHAR(50),
+          contact_phone VARCHAR(20),
+          created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+          updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+          FOREIGN KEY (user_id) REFERENCES users(id)
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
+      `)
+
+      console.log('✅ 表初始化完成')
+    } catch (error) {
+      console.error('❌ 表初始化失败:', error)
+      throw error
+    } finally {
+      connection.release()
     }
-    return Database.instance
   }
 }
 

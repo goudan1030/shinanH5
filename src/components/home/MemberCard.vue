@@ -1,5 +1,5 @@
 <template>
-  <div class="member-card">
+  <div class="member-card" @click="handleClick">
     <!-- 用户基本信息区域 -->
     <div class="user-info">
       <div class="user-avatar">
@@ -16,7 +16,7 @@
           <div class="details-left">
             <span class="detail-item">{{ member.birthYear }}年</span>
             <span class="dot">·</span>
-            <span class="detail-item">{{ member.education }}</span>
+            <span class="detail-item">{{ formatEducation(member.education) }}</span>
             <span class="dot">·</span>
             <span class="detail-item">{{ member.job }}</span>
           </div>
@@ -65,9 +65,17 @@
 
 <script setup lang="ts">
 import { Icon as VanIcon, Tag as VanTag } from 'vant'
+import { useRouter } from 'vue-router'
+import { 
+  educationMap, 
+  childrenPlanMap, 
+  marriageCertMap, 
+  getMappedValue 
+} from '@/utils/memberMapping'
 
 interface Member {
   id: string
+  member_no: string
   avatar: string
   nickname: string
   gender: 'male' | 'female'
@@ -81,9 +89,11 @@ interface Member {
   updateTime: Date
 }
 
-defineProps<{
+const props = defineProps<{
   member: Member
 }>()
+
+const router = useRouter()
 
 const formatTime = (date: Date) => {
   const now = new Date()
@@ -122,6 +132,15 @@ const formatTime = (date: Date) => {
   const years = Math.floor(months / 12)
   return `${years}年前`
 }
+
+const formatEducation = (education?: string) => getMappedValue(educationMap, education)
+
+const handleClick = () => {
+  router.push({
+    name: 'member-detail',
+    params: { id: props.member.id }
+  })
+}
 </script>
 
 <style scoped>
@@ -132,6 +151,12 @@ const formatTime = (date: Date) => {
   margin-bottom: 12px;
   box-shadow: 0 2px 8px rgba(0, 0, 0, 0.04);
   text-align: left;
+  cursor: pointer;
+  transition: transform 0.2s, box-shadow 0.2s;
+}
+
+.member-card:active {
+  transform: scale(0.98);
 }
 
 .user-info {

@@ -10,14 +10,25 @@
           @filter="handleFilter"
         />
         
+        <!-- 骨架屏 -->
+        <template v-if="isLoading">
+          <div class="skeleton-container">
+            <van-skeleton title avatar :row="3" />
+            <van-skeleton title avatar :row="3" />
+            <van-skeleton title avatar :row="3" />
+          </div>
+        </template>
+        
         <!-- 标签页内容 -->
-        <TabContent 
-          :active-tab="activeTopTab"
-          :members="memberList"
-          :total="total"
-          @load="handleLoadMore"
-          @refresh="handleRefresh"
-        />
+        <template v-else>
+          <TabContent 
+            :active-tab="activeTopTab"
+            :members="memberList"
+            :total="total"
+            @load="handleLoadMore"
+            @refresh="handleRefresh"
+          />
+        </template>
       </div>
 
       <!-- 底部导航栏 -->
@@ -66,15 +77,17 @@
 <script setup lang="ts">
 import { ref, computed, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
-import { Icon as VanIcon } from 'vant'
+import { Icon as VanIcon, showDialog, Skeleton as VanSkeleton } from 'vant'
 import SafeArea from '@/components/layout/SafeArea.vue'
 import TopTabs from '@/components/home/TopTabs.vue'
 import TabContent from '@/components/home/TabContent.vue'
+import { useAuthStore } from '@/stores/auth'
+import { memberApi } from '@/api/member'
+import { authApi } from '@/api/auth'
 import {
   TabBar as TTabBar,
   TabBarItem as TTabBarItem,
   PullDownRefresh as TPullDownRefresh,
-  Dialog as TDialog,
 } from 'tdesign-mobile-vue'
 import {
   HomeIcon,
@@ -82,11 +95,12 @@ import {
   NotificationIcon,
   UserIcon,
 } from 'tdesign-icons-vue-next'
-import { memberApi } from '@/api/member'
+import type { ApiResponse, UserRegistrationStatus } from '@/types'
 
 const router = useRouter()
+const authStore = useAuthStore()
 const activeTab = ref('home')
-const activeTopTab = ref('latest')
+const activeTopTab = ref<'latest' | 'hot' | 'news'>('latest')
 const refreshing = ref(false)
 const stats = ref(null)
 
@@ -108,8 +122,70 @@ const handleTabClick = (key: string) => {
   }
 }
 
-const handleAddClick = () => {
-  router.push('/register-info')
+// 添加用户注册状态
+const isUserRegistered = ref(false)
+
+// 获取用户注册状态
+const checkRegistrationStatus = async () => {
+  try {
+    const res = await authApi.getRegistrationStatus()
+    if ('success' in res) {
+      isUserRegistered.value = Boolean(res.data.registered)
+      console.log('当前用户信息登记状态:', isUserRegistered.value ? '已登记' : '未登记')
+    }
+  } catch (error) {
+    console.error('获取用户注册状态失败:', error)
+  }
+}
+
+// 修改添加按钮点击处理
+const handleAddClick = async () => {
+  // 先检查登录状态
+  if (!authStore.isLoggedIn) {
+    showDialog({
+      title: '提示',
+      message: '请先登录后再操作',
+      showCancelButton: true,
+      confirmButtonText: '去登录',
+      cancelButtonText: '取消',
+      confirmButtonColor: '#02C588',
+    }).then(() => {
+      router.push('/login')
+    }).catch(() => {})
+    return
+  }
+
+  try {
+    // 检查注册状态
+    const res = await authApi.getRegistrationStatus()
+    isUserRegistered.value = Boolean(res.data.registered)
+    
+    if (isUserRegistered.value) {
+      showDialog({
+        title: '提示',
+        message: '你已经登记过信息，请勿重复登记',
+        showCancelButton: true,
+        confirmButtonText: '前往编辑',
+        cancelButtonText: '取消',
+        confirmButtonColor: '#02C588',
+      }).then(() => {
+        router.push('/user-profile')
+      }).catch(() => {})
+      return
+    }
+    
+    // 只有未登记时才跳转
+    await checkRegistrationStatus() // 再次确认状态
+    if (!isUserRegistered.value) {
+      router.push('/register-info')
+    }
+  } catch (error) {
+    console.error('检查注册状态失败:', error)
+    showDialog({
+      title: '错误',
+      message: '操作失败，请重试'
+    })
+  }
 }
 
 // 处理搜索点击
@@ -122,13 +198,31 @@ const handleFilter = () => {
   console.log('Filter clicked')
 }
 
-// 会员列表数据
-const memberList = ref([])
+// 定义会员列表的类型
+interface Member {
+  member_no: string
+  nickname?: string
+  gender: string
+  province?: string
+  city?: string
+  birth_year: number
+  education?: string
+  occupation?: string
+  self_description?: string
+  children_plan?: string
+  marriage_cert?: string
+  updated_at: string
+}
+
+// 添加加载状态
+const isLoading = ref(true)
+const memberList = ref<Member[]>([])
 const total = ref(0)
 
 // 获取会员列表
 const loadMembers = async () => {
   try {
+    isLoading.value = true
     const res = await memberApi.getPublicMembers({
       page: 1,
       pageSize: 20,
@@ -143,12 +237,14 @@ const loadMembers = async () => {
       }
     })
     
-    if (res.success) {
+    if ('success' in res && res.success) {
       memberList.value = res.data.list
       total.value = res.data.total
     }
   } catch (error) {
     console.error('获取会员列表失败:', error)
+  } finally {
+    isLoading.value = false
   }
 }
 
@@ -218,8 +314,9 @@ const handleRefresh = async () => {
   }
 }
 
-onMounted(() => {
-  loadMembers()  // 页面加载时获取会员列表
+onMounted(async () => {
+  await loadMembers()
+  await checkRegistrationStatus()
 })
 </script>
 
@@ -313,5 +410,57 @@ onMounted(() => {
 
 .home {
   min-height: 100vh;
+}
+
+/* 自定义对话框样式 */
+:deep(.t-dialog) {
+  border-radius: 12px;
+  width: 80%;
+}
+
+:deep(.t-dialog__title) {
+  font-size: 16px;
+  color: #333;
+  padding: 20px 16px 0;
+}
+
+:deep(.t-dialog__content) {
+  padding: 16px;
+  font-size: 14px;
+  color: #666;
+  text-align: center;
+}
+
+:deep(.t-dialog__footer) {
+  padding: 16px;
+  border-top: 1px solid #f5f5f5;
+}
+
+:deep(.t-dialog__button) {
+  height: 40px;
+  font-size: 14px;
+  border-radius: 20px;
+}
+
+:deep(.t-dialog__confirm-btn) {
+  background: #02C588;
+  color: #fff;
+}
+
+:deep(.t-dialog__cancel-btn) {
+  color: #666;
+  background: #f5f5f5;
+}
+
+/* 添加骨架屏样式 */
+.skeleton-container {
+  padding: 16px;
+}
+
+.skeleton-container :deep(.van-skeleton) {
+  padding: 16px;
+  background: #fff;
+  border-radius: 8px;
+  margin-bottom: 12px;
 }
 </style> 

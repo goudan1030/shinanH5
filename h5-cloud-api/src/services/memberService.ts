@@ -1,5 +1,5 @@
-import { DbManager } from '../utils/dbManager'
-import { Connection, ResultSetHeader } from 'mysql2/promise'
+import { Database } from '../utils/db'
+import { ResultSetHeader, PoolConnection } from 'mysql2/promise'
 import {
   MemberBase,
   MemberRecord,
@@ -11,209 +11,279 @@ import {
   MemberServiceError
 } from '../types/member'
 
-// 会员状态枚举
-export enum MemberStatus {
-  ACTIVE = 'ACTIVE',
-  INACTIVE = 'INACTIVE',
-  PENDING = 'PENDING'
+interface PublicMemberFilters {
+  gender?: string;
+  ageStart?: number;
+  ageEnd?: number;
+  heightStart?: number;
+  heightEnd?: number;
+  education?: string;
+  location?: string;
 }
 
-// 会员类型枚举
-export enum MemberType {
-  NORMAL = 'NORMAL',
-  VIP = 'VIP'
-}
-
-export interface Member extends MemberRecord {
-  id: string
-  member_no: string
-  type: string
-  status: string
-  // ... 其他字段
-}
-
-// 会员记录接口
-export interface MemberRecord extends MemberBase {
-  id: number
-  type: MemberType
-  status: MemberStatus
-  created_at: Date
-  updated_at: Date
-}
-
-// 服务错误类
-export class MemberServiceError extends Error {
-  constructor(
-    message: string, 
-    public code: string = 'UNKNOWN_ERROR',
-    public details?: any
-  ) {
-    super(message)
-    this.name = 'MemberServiceError'
-  }
+interface PublicMemberQuery {
+  page: number;
+  pageSize: number;
+  filters: PublicMemberFilters;
 }
 
 export class MemberService {
-  private dbManager = DbManager.getInstance()
+  // 创建会员
+  async createMember(userId: number, data: MemberBase) {
+    const pool = await Database.getInstance()
+    const connection = await pool.getConnection()
 
-  //#region Public Methods
-  public async getMembers(params: MemberQueryParams): Promise<MemberPaginationResult> {
-    return this.wrapError(async () => {
-      return await this.dbManager.transaction(async (connection) => {
-        return await this.queryMembers(connection, params)
-      })
-    })
+    try {
+      await connection.beginTransaction()
+
+      const [result] = await connection.execute<ResultSetHeader>(
+        `INSERT INTO members (
+          user_id, name, id_card, address, wechat, contact_phone,
+          type, status, created_at, updated_at
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, NOW(), NOW())`,
+        [
+          userId,
+          data.name || null,
+          data.idCard || null,
+          data.address || null,
+          data.wechat || null,
+          data.contactPhone || null,
+          MemberType.NORMAL,
+          MemberStatus.ACTIVE
+        ]
+      )
+
+      await connection.commit()
+      return result
+    } catch (error) {
+      await connection.rollback()
+      throw error
+    } finally {
+      connection.release()
+    }
   }
 
-  public async getMemberByPhone(phone: string): Promise<MemberRecord | null> {
-    return this.wrapError(async () => {
-      return await this.dbManager.transaction(async (connection) => {
-        return await this.findMemberByPhone(connection, phone)
-      })
-    })
+  // 更新会员
+  async updateMember(userId: number, data: MemberBase) {
+    const pool = await Database.getInstance()
+    const connection = await pool.getConnection()
+
+    try {
+      await connection.beginTransaction()
+
+      const [result] = await connection.execute<ResultSetHeader>(
+        `UPDATE members SET
+          name = ?,
+          id_card = ?,
+          address = ?,
+          wechat = ?,
+          contact_phone = ?,
+          updated_at = NOW()
+        WHERE user_id = ?`,
+        [
+          data.name || null,
+          data.idCard || null,
+          data.address || null,
+          data.wechat || null,
+          data.contactPhone || null,
+          userId
+        ]
+      )
+
+      await connection.commit()
+      return result
+    } catch (error) {
+      await connection.rollback()
+      throw error
+    } finally {
+      connection.release()
+    }
   }
 
-  public async saveMemberInfo(data: MemberBase): Promise<void> {
-    return this.wrapError(async () => {
-      this.validateMemberData(data)
-      await this.dbManager.transaction(async (connection) => {
-        const member = await this.findMemberByPhone(connection, data.phone)
-        await this.saveOrUpdateMember(connection, member, data)
-      })
-    })
+  // 获取会员信息
+  async getMember(userId: number) {
+    const pool = await Database.getInstance()
+    const [rows] = await pool.execute(
+      'SELECT * FROM members WHERE user_id = ?',
+      [userId]
+    )
+    return Array.isArray(rows) && rows.length > 0 ? rows[0] : null
   }
 
-  public async updateMemberStatus(
+  // 更新会员状态
+  async updateMemberStatus(
     id: number,
     status: MemberStatus,
     operatorId: number,
     reason?: string
-  ): Promise<void> {
-    return this.wrapError(async () => {
-      await this.dbManager.transaction(async (connection) => {
-        await this.processStatusUpdate(connection, { id, status, operatorId, reason })
-      })
-    })
-  }
-  //#endregion
+  ) {
+    const pool = await Database.getInstance()
+    const connection = await pool.getConnection()
 
-  //#region Private Query Methods
-  private async queryMembers(
-    connection: Connection,
-    params: MemberQueryParams
-  ): Promise<MemberPaginationResult> {
-    const { sql, values } = this.buildQuerySQL(params)
-    const [total, list] = await Promise.all([
-      this.getTotal(connection, sql, values),
-      this.getList(connection, sql, values, params)
-    ])
+    try {
+      await connection.beginTransaction()
 
-    return {
-      list,
-      total,
-      page: params.page || 1,
-      pageSize: params.pageSize || 10
-    }
-  }
-
-  private async findMemberByPhone(
-    connection: Connection,
-    phone: string
-  ): Promise<MemberRecord | null> {
-    const [members] = await connection.execute<MemberRecord[]>(
-      'SELECT * FROM members WHERE phone = ?',
-      [phone]
-    )
-    return members[0] || null
-  }
-
-  private async getMemberById(
-    connection: Connection,
-    id: number
-  ): Promise<MemberRecord | null> {
-    const [members] = await connection.execute<MemberRecord[]>(
-      'SELECT * FROM members WHERE id = ?',
-      [id]
-    )
-    return members[0] || null
-  }
-  //#endregion
-
-  //#region Private Update Methods
-  private async saveOrUpdateMember(
-    connection: Connection,
-    existingMember: MemberRecord | null,
-    data: MemberBase
-  ): Promise<void> {
-    if (existingMember) {
-      await this.updateMemberInfo(connection, existingMember.id, data)
-    } else {
-      await this.createMemberInfo(connection, data)
-    }
-  }
-
-  private async updateMemberInfo(
-    connection: Connection,
-    id: number,
-    data: MemberBase
-  ): Promise<void> {
-    const [result] = await connection.execute<ResultSetHeader>(
-      `UPDATE members SET 
-        name = ?,
-        id_card = ?,
-        address = ?,
-        updated_at = NOW()
-      WHERE id = ?`,
-      [data.name || null, data.idCard || null, data.address || null, id]
-    )
-
-    this.checkAffectedRows(result, '更新会员信息失败')
-    this.logUpdateSuccess(id, result)
-  }
-
-  private async createMemberInfo(
-    connection: Connection,
-    data: MemberBase
-  ): Promise<void> {
-    const [result] = await connection.execute<ResultSetHeader>(
-      `INSERT INTO members (
-        phone, name, id_card, address, type, status,
-        created_at, updated_at
-      ) VALUES (?, ?, ?, ?, ?, ?, NOW(), NOW())`,
-      [
-        data.phone,
-        data.name || null,
-        data.idCard || null,
-        data.address || null,
-        MemberType.NORMAL,
-        MemberStatus.ACTIVE
-      ]
-    )
-
-    this.checkAffectedRows(result, '创建会员信息失败')
-    this.logCreateSuccess(result)
-  }
-  //#endregion
-
-  //#region Validation Methods
-  private validateMemberData(data: MemberBase): void {
-    if (!this.isValidPhone(data.phone)) {
-      throw new MemberServiceError(
-        '无效的手机号格式',
-        MemberErrorCode.INVALID_PHONE_FORMAT
+      const [result] = await connection.execute<ResultSetHeader>(
+        `UPDATE members SET
+          status = ?,
+          updated_at = NOW(),
+          updated_by = ?,
+          status_reason = ?
+        WHERE id = ?`,
+        [status, operatorId, reason || null, id]
       )
-    }
 
-    if (data.idCard && !this.isValidIdCard(data.idCard)) {
-      throw new MemberServiceError(
-        '无效的身份证号格式',
-        MemberErrorCode.INVALID_ID_CARD_FORMAT
-      )
-    }
+      if (result.affectedRows === 0) {
+        throw new MemberServiceError(
+          '会员不存在',
+          MemberErrorCode.MEMBER_NOT_FOUND
+        )
+      }
 
-    this.logValidationSuccess(data)
+      await connection.commit()
+    } catch (error) {
+      await connection.rollback()
+      throw error
+    } finally {
+      connection.release()
+    }
   }
 
+  // 获取会员列表
+  async getMembers(params: MemberQueryParams): Promise<MemberPaginationResult> {
+    const pool = await Database.getInstance()
+    const connection = await pool.getConnection()
+
+    try {
+      const page = params.page || 1
+      const pageSize = params.pageSize || 10
+      const offset = (page - 1) * pageSize
+
+      // 构建查询条件
+      const conditions: string[] = []
+      const values: any[] = []
+
+      if (params.status) {
+        conditions.push('status = ?')
+        values.push(params.status)
+      }
+
+      if (params.type) {
+        conditions.push('type = ?')
+        values.push(params.type)
+      }
+
+      if (params.keyword) {
+        conditions.push('(name LIKE ? OR phone LIKE ?)')
+        values.push(`%${params.keyword}%`, `%${params.keyword}%`)
+      }
+
+      const whereClause = conditions.length > 0 ? `WHERE ${conditions.join(' AND ')}` : ''
+
+      // 获取总数
+      const [countResult] = await connection.execute(
+        `SELECT COUNT(*) as total FROM members ${whereClause}`,
+        values
+      )
+      const total = Array.isArray(countResult) ? (countResult[0] as any).total : 0
+
+      // 获取列表数据
+      const [rows] = await connection.execute(
+        `SELECT * FROM members ${whereClause} ORDER BY created_at DESC LIMIT ? OFFSET ?`,
+        [...values, pageSize, offset]
+      )
+
+      return {
+        list: Array.isArray(rows) ? rows as MemberRecord[] : [],
+        total,
+        page,
+        pageSize
+      }
+    } finally {
+      connection.release()
+    }
+  }
+
+  // 保存会员信息
+  async saveMemberInfo(data: MemberBase): Promise<void> {
+    const pool = await Database.getInstance()
+    const connection = await pool.getConnection()
+
+    try {
+      await connection.beginTransaction()
+
+      // 验证手机号格式
+      if (!this.isValidPhone(data.phone)) {
+        throw new MemberServiceError(
+          '手机号格式不正确',
+          MemberErrorCode.INVALID_PHONE_FORMAT
+        )
+      }
+
+      // 如果提供了身份证号，验证格式
+      if (data.idCard && !this.isValidIdCard(data.idCard)) {
+        throw new MemberServiceError(
+          '身份证号格式不正确',
+          MemberErrorCode.INVALID_ID_CARD_FORMAT
+        )
+      }
+
+      // 检查会员是否已存在
+      const [existingRows] = await connection.execute(
+        'SELECT id FROM members WHERE phone = ?',
+        [data.phone]
+      )
+
+      if (Array.isArray(existingRows) && existingRows.length > 0) {
+        // 更新现有会员
+        await connection.execute(
+          `UPDATE members SET
+            name = ?,
+            id_card = ?,
+            address = ?,
+            wechat = ?,
+            contact_phone = ?,
+            updated_at = NOW()
+          WHERE phone = ?`,
+          [
+            data.name || null,
+            data.idCard || null,
+            data.address || null,
+            data.wechat || null,
+            data.contactPhone || null,
+            data.phone
+          ]
+        )
+      } else {
+        // 创建新会员
+        await connection.execute(
+          `INSERT INTO members (
+            phone, name, id_card, address, wechat, contact_phone,
+            type, status, created_at, updated_at
+          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, NOW(), NOW())`,
+          [
+            data.phone,
+            data.name || null,
+            data.idCard || null,
+            data.address || null,
+            data.wechat || null,
+            data.contactPhone || null,
+            MemberType.NORMAL,
+            MemberStatus.ACTIVE
+          ]
+        )
+      }
+
+      await connection.commit()
+    } catch (error) {
+      await connection.rollback()
+      throw error
+    } finally {
+      connection.release()
+    }
+  }
+
+  // 验证方法
   private isValidPhone(phone: string): boolean {
     return /^1[3-9]\d{9}$/.test(phone)
   }
@@ -221,221 +291,118 @@ export class MemberService {
   private isValidIdCard(idCard: string): boolean {
     return /^\d{17}[\dXx]$/.test(idCard)
   }
-  //#endregion
 
-  //#region Utility Methods
-  private async wrapError<T>(operation: () => Promise<T>): Promise<T> {
-    try {
-      return await operation()
-    } catch (error) {
-      this.handleError(error)
-    }
-  }
-
-  private checkAffectedRows(result: ResultSetHeader, errorMessage: string): void {
-    if (result.affectedRows === 0) {
-      throw new MemberServiceError(errorMessage, MemberErrorCode.UPDATE_FAILED)
-    }
-  }
-
-  private maskIdCard(idCard?: string): string {
-    if (!idCard) return '未填写'
-    return idCard.replace(/^(.{6})(.{8})(.{4})$/, '$1********$3')
-  }
-  //#endregion
-
-  //#region Logging Methods
-  private logValidationSuccess(data: MemberBase): void {
-    console.log('✅ 数据验证通过:', {
-      phone: data.phone,
-      name: data.name || '未填写',
-      idCard: this.maskIdCard(data.idCard),
-      address: data.address || '未填写',
-      timestamp: new Date().toISOString()
-    })
-  }
-
-  private logUpdateSuccess(id: number, result: ResultSetHeader): void {
-    console.log('✅ 会员信息更新成功:', {
-      id,
-      affectedRows: result.affectedRows,
-      changedRows: result.changedRows,
-      timestamp: new Date().toISOString()
-    })
-  }
-
-  private logCreateSuccess(result: ResultSetHeader): void {
-    console.log('✅ 会员信息创建成功:', {
-      insertId: result.insertId,
-      affectedRows: result.affectedRows,
-      timestamp: new Date().toISOString()
-    })
-  }
-  //#endregion
-
-  //#region Helper Methods
-  private async getTotal(
-    connection: Connection,
-    sql: string,
-    values: any[]
-  ): Promise<number> {
-    const countSql = `SELECT COUNT(*) as total FROM (${sql}) as t`
-    const [rows] = await connection.execute(countSql, values)
-    return (rows as any)[0].total
-  }
-
-  private async getList(
-    connection: Connection,
-    sql: string,
-    values: any[],
-    params: MemberQueryParams
-  ): Promise<MemberRecord[]> {
-    const page = params.page || 1
-    const pageSize = params.pageSize || 10
+  async getPublicMembers(query: PublicMemberQuery) {
+    const { page, pageSize, filters } = query
     const offset = (page - 1) * pageSize
 
-    const listSql = `${sql} ORDER BY created_at DESC LIMIT ? OFFSET ?`
-    const listValues = [...values, pageSize, offset]
-
-    const [rows] = await connection.execute<MemberRecord[]>(listSql, listValues)
-    return rows
-  }
-
-  private buildQuerySQL(params: MemberQueryParams): { sql: string; values: any[] } {
-    const conditions: string[] = ['1=1']
-    const values: any[] = []
-
-    if (params.status) {
-      conditions.push('status = ?')
-      values.push(params.status)
-    }
-
-    if (params.type) {
-      conditions.push('type = ?')
-      values.push(params.type)
-    }
-
-    if (params.keyword) {
-      const searchFields = ['member_no', 'phone', 'name']
-      const searchConditions = searchFields.map(field => `${field} LIKE ?`)
-      conditions.push(`(${searchConditions.join(' OR ')})`)
-      const keyword = `%${params.keyword}%`
-      values.push(...searchFields.map(() => keyword))
-    }
-
-    const sql = `
+    // 构建基础查询，添加更多字段
+    let sql = `
       SELECT 
-        id, phone, name, id_card, address, 
-        type, status, created_at, updated_at
-      FROM members 
-      WHERE ${conditions.join(' AND ')}
+        member_no,
+        nickname,
+        gender,
+        province,
+        city,
+        birth_year,
+        education,
+        occupation,
+        self_description,
+        children_plan,
+        marriage_cert,
+        updated_at
+      FROM members
+      WHERE deleted = 0
+      AND status = 'ACTIVE'  -- 只返回激活状态的会员
     `
 
-    return { sql, values }
+    // 添加筛选条件
+    const params: any[] = []
+    if (filters.gender) {
+      sql += ' AND gender = ?'
+      params.push(filters.gender)
+    }
+    if (filters.ageStart) {
+      sql += ' AND birth_year <= ?'
+      params.push(new Date().getFullYear() - filters.ageStart)
+    }
+    if (filters.ageEnd) {
+      sql += ' AND birth_year >= ?'
+      params.push(new Date().getFullYear() - filters.ageEnd)
+    }
+    if (filters.heightStart) {
+      sql += ' AND height >= ?'
+      params.push(filters.heightStart)
+    }
+    if (filters.heightEnd) {
+      sql += ' AND height <= ?'
+      params.push(filters.heightEnd)
+    }
+    if (filters.education) {
+      sql += ' AND education = ?'
+      params.push(filters.education)
+    }
+    if (filters.location) {
+      sql += ' AND (province = ? OR city = ?)'
+      params.push(filters.location, filters.location)
+    }
+
+    // 添加排序
+    sql += ' ORDER BY updated_at DESC'
+
+    // 添加分页
+    sql += ' LIMIT ? OFFSET ?'
+    params.push(pageSize, offset)
+
+    const pool = await Database.getInstance()
+    const [rows] = await pool.execute(sql, params)
+
+    // 获取总数
+    const [countResult] = await pool.execute(
+      'SELECT COUNT(*) as total FROM members WHERE deleted = 0 AND status = "ACTIVE"',
+      []
+    )
+    const total = (countResult as any)[0].total
+
+    // 处理返回数据，计算年龄
+    const currentYear = new Date().getFullYear()
+    const list = (rows as any[]).map(row => ({
+      ...row,
+      age: row.birth_year ? currentYear - row.birth_year : null,
+      nickname: row.nickname || `会员${row.member_no}`, // 添加昵称处理
+      // 删除敏感信息
+      phone: undefined,
+      wechat: undefined,
+      contact_phone: undefined,
+      id_card: undefined,
+      exact_location: undefined
+    }))
+
+    return {
+      total,
+      page,
+      pageSize,
+      list
+    }
   }
 
-  private async processStatusUpdate(
-    connection: Connection,
-    params: {
-      id: number
-      status: MemberStatus
-      operatorId: number
-      reason?: string
-    }
-  ): Promise<void> {
-    const member = await this.getMemberById(connection, params.id)
-    if (!member) {
-      throw new MemberServiceError(
-        '会员不存在',
-        MemberErrorCode.MEMBER_NOT_FOUND
+  // 添加获取会员详情方法
+  async getMemberById(memberId: string) {
+    const pool = await Database.getInstance()
+    try {
+      const [rows] = await pool.execute(
+        `SELECT * FROM members 
+         WHERE member_no = ? 
+         AND deleted = 0 
+         AND status = 'ACTIVE'`,
+        [memberId]
       )
+      return rows[0] || null
+    } catch (error) {
+      console.error('获取会员详情失败:', error)
+      throw new Error('获取会员详情失败')
     }
-
-    await this.updateStatus(connection, params.id, params.status)
-    await this.logStatusChange(connection, {
-      memberId: params.id,
-      oldStatus: member.status,
-      newStatus: params.status,
-      operatorId: params.operatorId,
-      reason: params.reason
-    })
-
-    this.logStatusUpdateSuccess(params.id, member.status, params.status, params.operatorId)
   }
-
-  private async updateStatus(
-    connection: Connection,
-    id: number,
-    status: MemberStatus
-  ): Promise<void> {
-    const [result] = await connection.execute<ResultSetHeader>(
-      'UPDATE members SET status = ?, updated_at = NOW() WHERE id = ?',
-      [status, id]
-    )
-
-    if (result.affectedRows === 0) {
-      throw new MemberServiceError(
-        '更新会员状态失败',
-        MemberErrorCode.UPDATE_FAILED
-      )
-    }
-  },
-
-  private async logStatusChange(
-    connection: Connection,
-    data: {
-      memberId: number
-      oldStatus: MemberStatus
-      newStatus: MemberStatus
-      operatorId: number
-      reason?: string
-    }
-  ): Promise<void> {
-    await connection.execute(
-      `INSERT INTO member_status_logs (
-        member_id, old_status, new_status, 
-        operator_id, reason, created_at
-      ) VALUES (?, ?, ?, ?, ?, NOW())`,
-      [
-        data.memberId,
-        data.oldStatus,
-        data.newStatus,
-        data.operatorId,
-        data.reason || null
-      ]
-    )
-  },
-
-  private logStatusUpdateSuccess(
-    id: number,
-    oldStatus: MemberStatus,
-    newStatus: MemberStatus,
-    operatorId: number
-  ): void {
-    console.log('✅ 会员状态更新成功:', {
-      id,
-      oldStatus,
-      newStatus,
-      operator: operatorId,
-      timestamp: new Date().toISOString()
-    })
-  },
-
-  private handleError(error: any): never {
-    console.error('❌ 服务层 - 保存会员信息失败:', error)
-    
-    if (error instanceof MemberServiceError) {
-      throw error
-    }
-    
-    throw new MemberServiceError(
-      '保存会员信息失败',
-      'SAVE_FAILED',
-      error instanceof Error ? error.message : error
-    )
-  },
-  //#endregion
 }
 
-// 导出单例实例
 export const memberService = new MemberService() 

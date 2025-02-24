@@ -255,6 +255,42 @@
             :maxlength="500"
           />
         </t-form-item>
+      </t-form>
+    </div>
+
+    <!-- 联系信息 -->
+    <div class="form-container detail-container">
+      <div class="form-title">联系信息</div>
+      <t-form 
+        ref="contactForm"
+        :data="formData"
+        :rules="rules"
+        label-align="top"
+        reset-type="empty"
+        show-error-message
+        scroll-to-first-error="auto"
+        layout="vertical"
+      >
+        <!-- 微信号 -->
+        <t-form-item label="17. 微信号" name="wechat">
+          <t-input
+            v-model="formData.wechat"
+            placeholder="请输入微信号"
+            type="text"
+            borderless
+          />
+        </t-form-item>
+        
+        <!-- 联系电话 -->
+        <t-form-item label="18. 联系电话" name="contactPhone">
+          <t-input
+            v-model="formData.contactPhone"
+            placeholder="请输入联系电话"
+            type="tel"
+            maxlength="11"
+            borderless
+          />
+        </t-form-item>
 
         <!-- 提交按钮 -->
         <div class="button-group">
@@ -285,17 +321,47 @@ import {
   Input as TInput,
   Picker as TPicker,
   Popup as TPopup,
-  Textarea as TTextarea
+  Textarea as TTextarea,
+  PickerValue
 } from 'tdesign-mobile-vue'
 import { Toast } from 'antd-mobile'
+import { registerApi } from '@/api/register'
+import type { RegisterInfoData } from '@/api/register'
 
 const router = useRouter()
-const form = ref<InstanceType<typeof TForm> | null>(null)
-const detailForm = ref<InstanceType<typeof TForm> | null>(null)
-const requirementForm = ref<InstanceType<typeof TForm> | null>(null)
 
-// 表单数据
-const formData = reactive({
+interface FormInstance {
+  validate: () => Promise<{ result: boolean; errors: any[] }>
+}
+
+const form = ref<FormInstance | null>(null)
+const detailForm = ref<FormInstance | null>(null)
+const requirementForm = ref<FormInstance | null>(null)
+const contactForm = ref<FormInstance | null>(null)
+
+interface FormData {
+  [key: string]: string | string[]
+  gender: string[]
+  birthday: string
+  height: string
+  weight: string
+  orientation: string[]
+  occupation: string
+  education: string
+  maritalStatus: string[]
+  residence: string[]
+  hometown: string[]
+  assets: string[]
+  expectedLocation: string
+  childIntent: string[]
+  marriageRequirement: string[]
+  selfIntro: string
+  expectations: string
+  wechat: string
+  contactPhone: string
+}
+
+const formData = reactive<FormData>({
   gender: [] as string[],
   birthday: '',
   height: '',
@@ -311,7 +377,9 @@ const formData = reactive({
   childIntent: [] as string[],
   marriageRequirement: [] as string[],
   selfIntro: '',
-  expectations: ''
+  expectations: '',
+  wechat: '',
+  contactPhone: '',
 })
 
 // 性别选项
@@ -478,30 +546,44 @@ const getMarriageRequirementLabel = (value: string[]) => {
   return option ? option.label : ''
 }
 
+// 修改表单验证规则，先删除所有必填要求
+interface Rule {
+  required?: boolean
+  message: string
+  validator?: (val: string) => boolean
+  pattern?: RegExp
+}
+
+interface Rules {
+  [key: string]: Rule[]
+}
+
 // 表单验证规则
-const rules = {
-  gender: [{ required: true, message: '请选择性别' }],
-  birthday: [{ required: true, message: '请输入出生年月' }],
+const rules: Rules = {
+  gender: [],
+  birthday: [],
   height: [
-    { required: true, message: '请输入身高' },
-    { validator: (val: string) => Number(val) >= 140 && Number(val) <= 220, message: '身高范围为140-220cm' }
+    { validator: (val: string) => !val || (Number(val) >= 140 && Number(val) <= 220), message: '身高范围为140-220cm' }
   ],
   weight: [
-    { required: true, message: '请输入体重' },
-    { validator: (val: string) => Number(val) >= 30 && Number(val) <= 150, message: '体重范围为30-150kg' }
+    { validator: (val: string) => !val || (Number(val) >= 30 && Number(val) <= 150), message: '体重范围为30-150kg' }
   ],
-  orientation: [{ required: true, message: '请选择性取向' }],
-  occupation: [{ required: true, message: '请输入职业' }],
-  education: [{ required: true, message: '请输入学历' }],
-  maritalStatus: [{ required: true, message: '请选择婚姻状态' }],
-  residence: [{ required: true, message: '请选择常居住地' }],
-  hometown: [{ required: true, message: '请选择户籍所在地' }],
-  assets: [{ required: true, message: '请选择房车情况' }],
-  expectedLocation: [{ required: true, message: '请输入期望地区' }],
-  childIntent: [{ required: true, message: '请选择孩子意愿' }],
-  marriageRequirement: [{ required: true, message: '请选择领证需求' }],
-  selfIntro: [{ required: true, message: '请填写自我介绍' }],
-  expectations: [{ required: true, message: '请填写期望对方' }]
+  orientation: [],
+  occupation: [],
+  education: [],
+  maritalStatus: [],
+  residence: [],
+  hometown: [],
+  assets: [],
+  expectedLocation: [],
+  childIntent: [],
+  marriageRequirement: [],
+  selfIntro: [],
+  expectations: [],
+  wechat: [],
+  contactPhone: [
+    { pattern: /^$|^1[3-9]\d{9}$/, message: '请输入正确的手机号' }  // 允许为空或正确的手机号
+  ]
 }
 
 // 检查登录状态
@@ -525,7 +607,7 @@ onMounted(() => {
   checkLogin()
 })
 
-// 表单提交
+// 修改表单提交函数
 const onSubmit = async () => {
   try {
     // 提交前检查登录状态
@@ -533,43 +615,82 @@ const onSubmit = async () => {
       return
     }
 
-    // 验证所有表单
-    const basicValid = await form.value?.validate?.() || []
-    const detailValid = await detailForm.value?.validate?.() || []
-    const requirementValid = await requirementForm.value?.validate?.() || []
+    console.log('\n=== 表单提交数据 ===')
+    console.log('当前表单数据:', formData)
 
-    // 检查是否有验证错误
-    if (basicValid.length > 0 || detailValid.length > 0 || requirementValid.length > 0) {
+    // 只验证有值的字段
+    const filledFields = Object.entries(formData).reduce((acc, [key, value]) => {
+      if (value && (!Array.isArray(value) || value.length > 0)) {
+        acc[key] = value
+      }
+      return acc
+    }, {} as Record<string, any>)
+
+    console.log('\n=== 已填写的字段 ===')
+    console.log(filledFields)
+
+    // 检查必填的验证规则
+    if (formData.height && !(Number(formData.height) >= 140 && Number(formData.height) <= 220)) {
       Toast.show({
-        content: '请完整填写所有必填项',
+        content: '身高范围为140-220cm',
         icon: 'fail'
       })
       return
     }
 
-    // 检查所有必填字段是否都有值
-    const requiredFields = Object.keys(rules)
-    for (const field of requiredFields) {
-      const value = formData[field]
-      if (!value || (Array.isArray(value) && value.length === 0)) {
-        Toast.show({
-          content: rules[field][0].message,
-          icon: 'fail'
-        })
-        return
-      }
+    if (formData.weight && !(Number(formData.weight) >= 30 && Number(formData.weight) <= 150)) {
+      Toast.show({
+        content: '体重范围为30-150kg',
+        icon: 'fail'
+      })
+      return
     }
 
-    // 所有字段验证通过，继续下一步
-    console.log('表单验证通过:', formData)
+    if (formData.contactPhone && !/^1[3-9]\d{9}$/.test(formData.contactPhone)) {
+      Toast.show({
+        content: '请输入正确的手机号',
+        icon: 'fail'
+      })
+      return
+    }
+
+    // 所有验证通过，保存到数据库
+    console.log('\n=== 开始保存数据 ===')
     Toast.show({
-      content: '提交成功',
-      icon: 'success'
+      content: '正在保存...',
+      icon: 'loading',
+      duration: 0
     })
+
+    try {
+      const response = await registerApi.saveRegisterInfo(filledFields as RegisterInfoData)
+      console.log('保存结果:', response)
+      
+      if (response.success) {
+        Toast.show({
+          content: '保存成功',
+          icon: 'success'
+        })
+        
+        // 等待 Toast 显示完成后跳转
+        setTimeout(() => {
+          router.push('/')
+        }, 1000)
+      } else {
+        throw new Error(response.message || '保存失败')
+      }
+    } catch (error: any) {
+      console.error('保存失败:', error)
+      Toast.show({
+        content: error.message || '保存失败，请重试',
+        icon: 'fail'
+      })
+    }
     
   } catch (error: any) {
+    console.error('\n=== ❌ 表单提交错误 ===', error)
     Toast.show({
-      content: error?.message || '表单验证失败',
+      content: error?.message || '提交失败',
       icon: 'fail'
     })
   }

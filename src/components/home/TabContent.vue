@@ -1,6 +1,14 @@
 <template>
-  <van-pull-refresh v-model="refreshing" @refresh="onRefresh">
-    <div class="tab-content" ref="contentRef">
+  <van-pull-refresh 
+    v-model="refreshing" 
+    @refresh="onRefresh"
+    :disabled="!canRefresh"
+  >
+    <div 
+      class="tab-content" 
+      ref="contentRef"
+      @scroll="handleScroll"
+    >
       <!-- Banner 区域 -->
       <Banner :type="activeTab" />
 
@@ -87,16 +95,14 @@ import { throttle } from 'lodash-es'
 const refreshing = ref(false)
 const contentRef = ref<HTMLElement | null>(null)
 
-// 下拉刷新处理函数
-const onRefresh = async () => {
-  try {
-    // 重置页码
-    currentPage.value = 1
-    // 触发外部刷新事件
-    await emit('refresh')
-  } finally {
-    refreshing.value = false
-  }
+// 添加滚动相关状态
+const scrollTop = ref(0)
+const canRefresh = computed(() => scrollTop.value === 0)
+
+// 处理滚动事件
+const handleScroll = (e: Event) => {
+  const target = e.target as HTMLElement
+  scrollTop.value = target.scrollTop
 }
 
 // 修改 props 和 emits 定义
@@ -238,6 +244,23 @@ const getMarriageCertLabel = (cert: string) => {
   }
   return map[cert] || cert
 }
+
+// 下拉刷新处理函数
+const onRefresh = async () => {
+  if (!canRefresh.value) {
+    refreshing.value = false
+    return
+  }
+
+  try {
+    // 重置页码
+    currentPage.value = 1
+    // 触发外部刷新事件
+    await emit('refresh')
+  } finally {
+    refreshing.value = false
+  }
+}
 </script>
 
 <style scoped>
@@ -347,9 +370,11 @@ const getMarriageCertLabel = (cert: string) => {
 
 :deep(.van-pull-refresh__track) {
   min-height: calc(100vh - 100px);
+  transition: transform 0.3s;
 }
 
 :deep(.van-pull-refresh__head) {
   color: #02C588;
+  transition: height 0.3s;
 }
 </style> 

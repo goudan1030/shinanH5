@@ -12,6 +12,8 @@ import {
 import NavBar from '@/components/common/NavBar.vue'
 import AvatarUpload from '@/components/common/AvatarUpload.vue'
 import { showToast } from 'vant'
+import authApi from '@/api/auth'
+import type { UpdateUserInfoParams } from '@/api/auth'
 
 const router = useRouter()
 const authStore = useAuthStore()
@@ -81,21 +83,21 @@ const onSubmit = async () => {
     
     // 更新用户信息
     console.log('开始更新用户信息到服务器...')
-    await authStore.updateUserInfo({
+    const response = await authApi.updateProfile({
       nickname: formData.value.nickname
     })
     console.log('用户信息更新完成')
     
-    showToast('保存成功')
-    
-    router.back()
+    if (response.data.success) {
+      showToast('保存成功')
+      // 更新本地用户信息
+      authStore.updateUserInfo(response.data.data)
+      router.back()
+    } else {
+      throw new Error(response.data.message || '保存失败')
+    }
   } catch (error) {
-    console.error('保存失败:', {
-      error,
-      errorMessage: error.message,
-      errorStack: error.stack,
-      errorResponse: error.response?.data
-    })
+    console.error('保存失败:', error)
     showToast('保存失败')
   } finally {
     isLoading.value = false

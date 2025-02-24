@@ -7,6 +7,9 @@ import userRoutes from './routes/userRoutes'
 import { errorHandler } from './middleware/error'
 import Database from './utils/db'
 import path from 'path'
+import routes from './routes'
+import registerRouter from './routes/register'
+import memberRoutes from './routes/member'
 
 // 确保在最开始就加载环境变量
 const envPath = path.resolve(__dirname, '../.env')
@@ -90,6 +93,9 @@ app.get('/api/test', (req: Request, res: Response) => {
 app.use('/api/auth', authRoutes)
 app.use('/api/test', testRoutes)
 app.use('/api/user', userRoutes)
+app.use('/api', routes)
+app.use('/api/register', registerRouter)
+app.use('/api/member', memberRoutes)
 
 // 错误处理
 app.use(errorHandler)

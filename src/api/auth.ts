@@ -1,5 +1,6 @@
 import request from '@/utils/request'
-import type { ApiResponse, LoginResponse, MemberInfo } from '@/types'
+import type { ApiResponse, LoginResponse, MemberInfo, UserRegistrationStatus } from '@/types'
+import type { AxiosResponse } from 'axios'
 
 interface SetupUserResponse {
   success: boolean
@@ -27,6 +28,19 @@ interface UpdateUserResponse {
   }
 }
 
+export interface UserInfo {
+  id: number
+  phone: string
+  avatar?: string
+  nickname?: string
+  isNewUser?: boolean
+}
+
+export interface UpdateUserInfoParams {
+  avatar?: string
+  nickname?: string
+}
+
 export const authApi = {
   // 发送验证码
   sendCode: (phone: string) =>
@@ -41,7 +55,7 @@ export const authApi = {
     phone: string
     username: string
     password: string 
-  }, token?: string): Promise<ApiResponse> {
+  }, token?: string): Promise<ApiResponse<void>> {
     return request.post('/auth/setup', params, {
       headers: token ? { Authorization: `Bearer ${token}` } : undefined
     })
@@ -65,7 +79,7 @@ export const authApi = {
     }),
 
   // 添加获取临时 token 的方法
-  async getTempToken(phone: string): Promise<ApiResponse> {
+  async getTempToken(phone: string): Promise<ApiResponse<void>> {
     return request.post('/auth/temp-token', { phone })
   },
 
@@ -74,8 +88,24 @@ export const authApi = {
     request.post('/auth/check-registered', { phone }),
 
   // 保存会员信息
-  saveMemberInfo: (data: MemberInfo): Promise<ApiResponse> => {
+  saveMemberInfo: (data: any): Promise<ApiResponse<void>> => {
     console.log('API层 - 发送保存会员信息请求:', data)
-    return request.post<ApiResponse>('/auth/member-info', data)
+    return request.post('/auth/member-info', data)
+  },
+
+  // 修改方法名以匹配使用处
+  updateProfile: (data: UpdateUserInfoParams): Promise<AxiosResponse> => {
+    return request({
+      url: '/api/user/profile',
+      method: 'put',
+      data
+    })
+  },
+
+  // 获取用户注册状态
+  async getRegistrationStatus(): Promise<ApiResponse<UserRegistrationStatus>> {
+    return request.get('/auth/registration-status')
   }
-} 
+}
+
+export default authApi 

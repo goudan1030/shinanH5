@@ -514,3 +514,28 @@ export const checkUserRegistered: AsyncHandler = async (req, res) => {
     })
   }
 }
+
+// 获取用户注册状态
+export const getRegistrationStatus: AsyncHandler = async (req, res) => {
+  try {
+    const userId = req.user?.id
+    const pool = await Database.getInstance()
+    const [rows] = await pool.execute(
+      'SELECT registered FROM users WHERE id = ?',
+      [userId]
+    ) as any[]
+    
+    res.json({
+      success: true,
+      data: {
+        registered: rows[0]?.registered || 0
+      }
+    })
+  } catch (error: any) {
+    console.error('获取用户注册状态失败:', error)
+    res.status(500).json({
+      success: false,
+      message: error.message || '获取用户注册状态失败'
+    })
+  }
+}

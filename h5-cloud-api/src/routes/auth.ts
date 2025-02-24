@@ -1,5 +1,5 @@
 import { Router } from 'express'
-import { sendCode, loginWithPhone, loginWithPassword, setupUser, getCurrentUser, updateUser, checkLoginStatus, checkUserStatus, getTempToken, checkUserRegistered } from '../controllers/auth'
+import { sendCode, loginWithPhone, loginWithPassword, setupUser, getCurrentUser, updateUser, checkLoginStatus, checkUserStatus, getTempToken, checkUserRegistered, getRegistrationStatus } from '../controllers/auth'
 import { authMiddleware } from '../middleware/auth'
 import { createAsyncHandler } from '../types/express'
 import { userService } from '../services/userService'
@@ -44,5 +44,8 @@ router.post('/member-info', createAsyncHandler(async (req, res) => {
     })
   }
 }))
+
+// 添加获取注册状态路由
+router.get('/registration-status', authMiddleware, getRegistrationStatus)
 
 export default router 

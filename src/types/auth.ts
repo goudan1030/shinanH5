@@ -23,4 +23,8 @@ export interface SetupUserRequest {
   phone: string
   username: string
   password: string
+}
+
+export interface UserRegistrationStatus {
+  registered: number // 1: 已登记, 0: 未登记
 } 

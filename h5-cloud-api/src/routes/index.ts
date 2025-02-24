@@ -2,6 +2,7 @@ import { Router } from 'express'
 import homeRoutes from './home'
 import memberRoutes from './member'
 import authRouter from './auth'
+import registerRouter from './register'
 
 const router = Router()
 
@@ -13,5 +14,8 @@ router.use('/auth', authRouter)
 
 // 需要认证的业务路由
 router.use('/member', memberRoutes)  // 统一使用 member 路由
+
+// 添加注册信息路由
+router.use('/register', registerRouter)
 
 export default router 

@@ -5,17 +5,21 @@ import './style.css'
 import App from './App.vue'
 import router from './router'
 
-// 导入 antd-mobile 样式
-import 'antd-mobile/es/global'
-import 'antd-mobile/bundle/style.css'
+// 导入 Vant 组件和样式
+import { Dialog } from 'vant'
+import 'vant/lib/index.css'
+import 'vant/es/dialog/style'
 
-// 导入 TDesign Mobile 样式
+// 导入 TDesign
+import TDesign from 'tdesign-mobile-vue'
 import 'tdesign-mobile-vue/es/style/index.css'
-// 导入自定义主题覆盖
 import './styles/tdesign-theme.css'
 
 const app = createApp(App)
 
 app.use(createPinia())
 app.use(router)
+app.use(TDesign)
+app.use(Dialog)
+
 app.mount('#app')
