@@ -24,10 +24,20 @@
       <template v-if="activeTab === 'news'">
         <div class="news-list">
           <NewsCard
-            v-for="news in newsData"
-            :key="news.id"
-            :news="news"
+            v-for="article in articles"
+            :key="article.id"
+            :news="article"
           />
+          <!-- 加载更多触发器 -->
+          <div 
+            ref="loadingTrigger" 
+            class="loading-trigger"
+            v-show="!isArticleFinished"
+          >
+            <van-loading v-if="isLoading" type="spinner" size="24px" vertical>
+              加载中...
+            </van-loading>
+          </div>
         </div>
       </template>
       <template v-else>
@@ -78,7 +88,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, onMounted, onUnmounted } from 'vue'
+import { ref, computed, onMounted, onUnmounted, watch } from 'vue'
 import { 
   Loading as VanLoading,
   PullRefresh as VanPullRefresh,
@@ -92,6 +102,7 @@ import NewsCard from './NewsCard.vue'
 import { throttle } from 'lodash-es'
 import { bannerApi } from '@/api/banner'
 import { articleApi } from '@/api/article'
+import type { Article } from '@/types/article'
 
 // 添加下拉刷新相关状态
 const refreshing = ref(false)
@@ -128,6 +139,12 @@ const displayMembers = computed(() => props.members)
 const isFinished = computed(() => displayMembers.value.length >= props.total)
 const showBenefit = computed(() => props.activeTab === 'latest')
 
+// 文章列表数据
+const articles = ref<Article[]>([])
+const articleTotal = ref(0)
+const articlePage = ref(1)
+const isArticleFinished = computed(() => articles.value.length >= articleTotal.value)
+
 // 根据不同标签页显示不同标题
 const getSectionTitle = computed(() => {
   switch (props.activeTab) {
@@ -141,31 +158,6 @@ const getSectionTitle = computed(() => {
       return ''
   }
 })
-
-// 资讯数据
-const newsData = ref([
-  {
-    id: '1',
-    coverUrl: 'https://img.yzcdn.cn/vant/cat.jpeg',
-    title: '2024年婚恋市场分析：95后成为相亲主力军，这些新趋势值得关注',
-    description: '深度解析当代年轻人的婚恋观念变化和择偶新趋势',
-    publishTime: new Date('2024-02-20')
-  },
-  {
-    id: '2',
-    coverUrl: 'https://img.yzcdn.cn/vant/cat.jpeg',
-    title: '如何在相亲过程中展现最真实的自己？专家给出这些建议',
-    description: '婚恋心理专家分享相亲技巧和注意事项',
-    publishTime: new Date('2024-02-19')
-  },
-  {
-    id: '3',
-    coverUrl: 'https://img.yzcdn.cn/vant/cat.jpeg',
-    title: '数据说话：这些城市的单身青年最渴望脱单，你所在的城市排第几？',
-    description: '2024年一线城市婚恋数据大揭秘',
-    publishTime: new Date('2024-02-18')
-  }
-])
 
 // 添加节流的加载函数
 const throttledLoad = throttle(async () => {
@@ -282,22 +274,33 @@ const loadBanners = async () => {
   }
 }
 
-// 获取文章数据
-const loadArticles = async () => {
+// 加载文章列表
+const loadArticles = async (page = 1) => {
   try {
     const res = await articleApi.getArticles({
-      page: 1,
+      page,
       pageSize: 10
     })
     if (res.success) {
-      console.log('=== 文章数据 ===')
-      console.log('文章列表:', res.data.list)
-      console.log('总数:', res.data.total)
+      if (page === 1) {
+        articles.value = res.data.list
+      } else {
+        articles.value.push(...res.data.list)
+      }
+      articleTotal.value = res.data.total
+      articlePage.value = page
     }
   } catch (error) {
     console.error('获取文章失败:', error)
   }
 }
+
+// 在初始化和切换到新闻tab时加载文章
+watch(() => props.activeTab, (newTab) => {
+  if (newTab === 'news') {
+    loadArticles()
+  }
+})
 </script>
 
 <style scoped>

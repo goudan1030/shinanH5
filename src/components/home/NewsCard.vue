@@ -1,36 +1,39 @@
 <template>
-  <div class="news-card">
+  <div class="news-card" @click="handleClick">
     <div class="news-cover">
-      <img :src="news.coverUrl" :alt="news.title">
+      <img :src="news.cover_url" :alt="news.title">
     </div>
     <div class="news-content">
       <div class="news-title">{{ news.title }}</div>
-      <div class="news-desc">{{ news.description }}</div>
-      <div class="news-footer">
-        <div class="publish-time">{{ formatTime(news.publishTime) }}</div>
+      <div class="news-desc">{{ news.summary || '暂无简介' }}</div>
+      <div class="news-time">
+        {{ formatTime(news.created_at) }}
       </div>
     </div>
   </div>
 </template>
 
 <script setup lang="ts">
-interface News {
-  id: string
-  coverUrl: string
-  title: string
-  description: string
-  publishTime: Date
-}
+import { useRouter } from 'vue-router'
+import type { Article } from '@/types/article'
+import dayjs from 'dayjs'
 
-defineProps<{
-  news: News
+const props = defineProps<{
+  news: Article
 }>()
 
-const formatTime = (date: Date) => {
-  return date.toLocaleDateString('zh-CN', {
-    month: 'numeric',
-    day: 'numeric'
-  })
+const router = useRouter()
+
+const handleClick = () => {
+  if (props.news.link_url) {
+    window.open(props.news.link_url, '_blank')
+  } else {
+    router.push(`/article/${props.news.id}`)
+  }
+}
+
+const formatTime = (time: string) => {
+  return dayjs(time).format('YYYY-MM-DD')
 }
 </script>
 

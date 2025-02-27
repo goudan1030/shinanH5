@@ -1,11 +1,9 @@
 import { createRouter, createWebHistory } from 'vue-router'
 import { useAuthStore } from '@/stores/auth'
 import TabBarLayout from '@/components/layout/TabBarLayout.vue'
-import HomeView from '@/views/HomeView.vue'
-import RegisterInfoView from '@/views/RegisterInfoView.vue'
-import axios from 'axios'
 import NotFound from '@/components/common/NotFound.vue'
 import { authApi } from '@/api/auth'
+import ArticleDetailView from '@/views/ArticleDetailView.vue'
 
 const router = createRouter({
   history: createWebHistory(import.meta.env.BASE_URL),
@@ -17,29 +15,33 @@ const router = createRouter({
         {
           path: '',
           name: 'home',
-          component: HomeView
+          component: () => import('@/views/HomeView.vue'),
+          meta: { requiresAuth: false }
         },
         {
           path: 'groups',
           name: 'groups',
-          component: () => import('@/views/GroupsView.vue')
+          component: () => import('@/views/GroupsView.vue'),
+          meta: { requiresAuth: true }
         },
         {
           path: 'messages',
           name: 'messages',
-          component: () => import('@/views/MessagesView.vue')
+          component: () => import('@/views/MessagesView.vue'),
+          meta: { requiresAuth: true }
         },
         {
           path: 'mine',
           name: 'mine',
-          component: () => import('@/views/MineView.vue')
+          component: () => import('@/views/MineView.vue'),
+          meta: { requiresAuth: true }
         }
       ]
     },
     {
       path: '/register-info',
       name: 'register-info',
-      component: RegisterInfoView,
+      component: () => import('@/views/RegisterInfoView.vue'),
       meta: { 
         requiresAuth: false,
         requiresSetup: true,
@@ -51,6 +53,12 @@ const router = createRouter({
       name: 'login',
       component: () => import('@/views/LoginView.vue'),
       meta: { requiresAuth: false, title: '登录' }
+    },
+    {
+      path: '/password-login',
+      name: 'password-login',
+      component: () => import('@/views/PasswordLoginView.vue'),
+      meta: { requiresAuth: false, title: '密码登录' }
     },
     {
       path: '/verify-code',
@@ -71,18 +79,11 @@ const router = createRouter({
       meta: { requiresAuth: false, title: '用户协议' }
     },
     {
-      path: '/password-login',
-      name: 'password-login',
-      component: () => import('@/views/PasswordLoginView.vue'),
-      meta: { requiresAuth: false, title: '密码登录' }
-    },
-    {
       path: '/favorites',
       name: 'favorites',
       component: () => import('@/views/FavoritesView.vue'),
-      meta: {
+      meta: { 
         requiresAuth: true,
-        requiresSetup: false,
         title: '我的收藏'
       }
     },
@@ -90,20 +91,9 @@ const router = createRouter({
       path: '/settings',
       name: 'settings',
       component: () => import('@/views/SettingsView.vue'),
-      meta: {
+      meta: { 
         requiresAuth: true,
-        requiresSetup: false,
         title: '设置'
-      }
-    },
-    {
-      path: '/user-profile',
-      name: 'user-profile',
-      component: () => import('@/views/UserProfileView.vue'),
-      meta: {
-        requiresAuth: true,
-        requiresSetup: false,
-        title: '个人信息'
       }
     },
     {
@@ -111,8 +101,16 @@ const router = createRouter({
       name: 'member-detail',
       component: () => import('@/views/MemberDetailView.vue'),
       meta: { 
-        title: '会员详情',
-        requiresAuth: false // 不需要登录也可以查看基本信息
+        requiresAuth: false,
+        title: '会员详情'
+      }
+    },
+    {
+      path: '/article/:id',
+      name: 'ArticleDetail',
+      component: ArticleDetailView,
+      meta: {
+        title: '文章详情'
       }
     },
     {
@@ -126,46 +124,18 @@ const router = createRouter({
 
 // 路由守卫
 router.beforeEach(async (to, from, next) => {
-  console.log('\n=== 🛣️ 路由守卫 ===')
-  console.log('从:', from.path)
-  console.log('到:', to.path)
-  
+  console.log('=== 🛣️ 路由守卫 ===')
+  console.log('从:', from.fullPath)
+  console.log('到:', to.fullPath)
+
   const authStore = useAuthStore()
-  const currentStatus = {
-    isLoggedIn: authStore.isLoggedIn,
-    user: authStore.user,
-    isNewUser: authStore.isNewUser,
-    path: to.path
-  }
-  console.log('当前用户状态:', currentStatus)
+  console.log('当前用户状态:', authStore)
 
-  // 检查用户注册状态
-  if (to.path === '/register-info' && authStore.isLoggedIn) {
-    try {
-      const res = await authApi.getRegistrationStatus()
-      if (res.success && res.data.registered) {
-        console.log('用户已登记信息，禁止访问注册页面')
-        next(from.path)
-        return
-      }
-    } catch (error) {
-      console.error('检查用户注册状态失败:', error)
-    }
-  }
-
-  // 如果是注册信息页面，且有用户信息，允许访问
-  if (to.name === 'register-info' && authStore.user) {
-    console.log('允许访问注册信息页面')
-    next()
-    return
-  }
-
-  // 如果是新用户，且目标不是注册信息页面，重定向到注册信息页面
-  if (authStore.user?.isNewUser && to.name !== 'register-info') {
-    console.log('新用户需要完善信息，重定向到注册信息页面')
+  // 如果是需要登录的页面，检查登录状态
+  if (to.meta.requiresAuth && !authStore.isLoggedIn) {
     next({
-      name: 'register-info',
-      query: { phone: authStore.user?.phone }
+      path: '/login',
+      query: { redirect: to.fullPath }
     })
     return
   }

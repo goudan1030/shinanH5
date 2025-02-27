@@ -1,4 +1,5 @@
 import Database from '../utils/db'
+import { getFullImageUrl } from '../utils/helper'
 
 export class ArticleService {
   // 获取文章列表
@@ -33,8 +34,14 @@ export class ArticleService {
       [pageSize, offset]
     )
 
+    // 处理图片URL
+    const articles = (rows as any[]).map(article => ({
+      ...article,
+      cover_url: getFullImageUrl(article.cover_url)
+    }))
+
     return {
-      list: rows,
+      list: articles,
       total,
       page,
       pageSize
@@ -48,7 +55,11 @@ export class ArticleService {
       'SELECT * FROM articles WHERE id = ? AND is_hidden = 0',
       [id]
     )
-    return (rows as any[])[0]
+    const article = (rows as any[])[0]
+    if (article) {
+      article.cover_url = getFullImageUrl(article.cover_url)
+    }
+    return article
   }
 }
 
