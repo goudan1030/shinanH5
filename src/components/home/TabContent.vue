@@ -37,7 +37,7 @@
             :key="member.member_no"
             :member="{
               id: member.member_no,
-              avatar: 'https://img.yzcdn.cn/vant/cat.jpeg',
+              avatar: member.avatar || '',
               nickname: member.nickname || '会员' + member.member_no,
               gender: member.gender,
               city: `${member.province || ''} ${member.city || ''}`,
@@ -90,6 +90,8 @@ import MemberCard from './MemberCard.vue'
 import NewUserBenefit from './NewUserBenefit.vue'
 import NewsCard from './NewsCard.vue'
 import { throttle } from 'lodash-es'
+import { bannerApi } from '@/api/banner'
+import { articleApi } from '@/api/article'
 
 // 添加下拉刷新相关状态
 const refreshing = ref(false)
@@ -202,6 +204,9 @@ onMounted(() => {
   if (loadingTrigger.value) {
     observer.value.observe(loadingTrigger.value)
   }
+
+  loadBanners()
+  loadArticles()
 })
 
 // 在组件卸载时清理
@@ -259,6 +264,38 @@ const onRefresh = async () => {
     await emit('refresh')
   } finally {
     refreshing.value = false
+  }
+}
+
+// 获取banner数据
+const loadBanners = async () => {
+  try {
+    const res = await bannerApi.getBanners()
+    if (res.success) {
+      console.log('=== Banner数据 ===')
+      console.log('最新Banner:', res.data.latest)
+      console.log('热门Banner:', res.data.hot)
+      console.log('弹窗Banner:', res.data.popup)
+    }
+  } catch (error) {
+    console.error('获取Banner失败:', error)
+  }
+}
+
+// 获取文章数据
+const loadArticles = async () => {
+  try {
+    const res = await articleApi.getArticles({
+      page: 1,
+      pageSize: 10
+    })
+    if (res.success) {
+      console.log('=== 文章数据 ===')
+      console.log('文章列表:', res.data.list)
+      console.log('总数:', res.data.total)
+    }
+  } catch (error) {
+    console.error('获取文章失败:', error)
   }
 }
 </script>
