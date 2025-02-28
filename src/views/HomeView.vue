@@ -10,25 +10,17 @@
           @filter="handleFilter"
         />
         
-        <!-- 骨架屏 -->
-        <template v-if="isLoading">
-          <div class="skeleton-container">
-            <van-skeleton title avatar :row="3" />
-            <van-skeleton title avatar :row="3" />
-            <van-skeleton title avatar :row="3" />
-          </div>
-        </template>
-        
         <!-- 标签页内容 -->
-        <template v-else>
+        <keep-alive :include="['TabContent']">
           <TabContent 
+            :key="activeTopTab"
             :active-tab="activeTopTab"
-            :members="memberList"
-            :total="total"
+            v-model:members="memberList"
+            v-model:total="total"
             @load="handleLoadMore"
             @refresh="handleRefresh"
           />
-        </template>
+        </keep-alive>
       </div>
 
       <!-- 底部导航栏 -->
@@ -75,9 +67,9 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, onMounted } from 'vue'
+import { ref, computed, onMounted, onActivated, watch, reactive } from 'vue'
 import { useRouter } from 'vue-router'
-import { Icon as VanIcon, showDialog, Skeleton as VanSkeleton } from 'vant'
+import { Icon as VanIcon, showDialog, Skeleton as VanSkeleton, showToast } from 'vant'
 import SafeArea from '@/components/layout/SafeArea.vue'
 import TopTabs from '@/components/home/TopTabs.vue'
 import TabContent from '@/components/home/TabContent.vue'
@@ -95,12 +87,13 @@ import {
   NotificationIcon,
   UserIcon,
 } from 'tdesign-icons-vue-next'
-import type { ApiResponse, UserRegistrationStatus } from '@/types'
+import type { ApiResponse, UserRegistrationStatus, TabType } from '@/types'
+import { useHomeStore } from '@/stores/home'
 
 const router = useRouter()
 const authStore = useAuthStore()
 const activeTab = ref('home')
-const activeTopTab = ref<'latest' | 'hot' | 'news'>('latest')
+const activeTopTab = ref<TabType>('latest')
 const refreshing = ref(false)
 const stats = ref(null)
 
@@ -127,6 +120,12 @@ const isUserRegistered = ref(false)
 
 // 获取用户注册状态
 const checkRegistrationStatus = async () => {
+  // 如果未登录，直接返回
+  if (!authStore.isLoggedIn) {
+    isUserRegistered.value = false
+    return
+  }
+
   try {
     const res = await authApi.getRegistrationStatus()
     if ('success' in res) {
@@ -168,8 +167,23 @@ const handleAddClick = async () => {
         confirmButtonText: '前往编辑',
         cancelButtonText: '取消',
         confirmButtonColor: '#02C588',
-      }).then(() => {
-        router.push('/user-profile')
+      }).then(async () => {
+        try {
+          // 获取当前用户的会员信息
+          const res = await memberApi.getCurrentMemberInfo()
+          if (res.success && res.data) {
+            // 跳转到会员详情页
+            router.push({
+              name: 'member-detail',
+              params: { id: res.data.member_no }
+            })
+          } else {
+            router.push({ name: 'register-info' })
+          }
+        } catch (error) {
+          console.error('获取会员信息失败:', error)
+          showToast('获取会员信息失败')
+        }
       }).catch(() => {})
       return
     }
@@ -219,39 +233,85 @@ const isLoading = ref(true)
 const memberList = ref<Member[]>([])
 const total = ref(0)
 
-// 获取会员列表
-const loadMembers = async () => {
-  try {
-    isLoading.value = true
-    const res = await memberApi.getPublicMembers({
-      page: 1,
-      pageSize: 20,
-      filters: {
-        gender: '',
-        ageStart: undefined,
-        ageEnd: undefined,
-        heightStart: undefined,
-        heightEnd: undefined,
-        education: '',
-        location: ''
-      }
+// 使用 store 替代本地状态
+const homeStore = useHomeStore()
+
+// 修改 onActivated 钩子
+onActivated(async () => {
+  console.log('HomeView activated, isFirstLoad:', homeStore.isFirstLoad)
+  // 检查缓存
+  const cached = homeStore.cachedData[activeTopTab.value]
+  if (homeStore.isFirstLoad || !cached || Date.now() - cached.timestamp > 5 * 60 * 1000) {
+    // 首次加载或缓存过期时从数据库获取数据
+    await handleLoadMore(1)
+    homeStore.setFirstLoad(false)
+  } else {
+    // 使用缓存数据
+    console.log('使用缓存数据:', cached)
+    memberList.value = cached.list
+    total.value = cached.total
+  }
+})
+
+// 修改标签切换处理
+watch(activeTopTab, (newTab, oldTab) => {
+  if (oldTab) {
+    // 保存旧标签页的数据到缓存
+    homeStore.setCachedData(oldTab, {
+      list: memberList.value,
+      total: total.value
     })
-    
-    if ('success' in res && res.success) {
-      memberList.value = res.data.list
-      total.value = res.data.total
+  }
+  
+  // 恢复新标签页的数据
+  const cached = homeStore.cachedData[newTab]
+  if (cached && Date.now() - cached.timestamp < 5 * 60 * 1000) {
+    memberList.value = cached.list
+    total.value = cached.total
+  } else {
+    // 如果没有缓存或缓存过期，加载新数据
+    handleLoadMore(1)
+  }
+})
+
+// 修改加载更多函数
+const handleLoadMore = async (page: number) => {
+  console.log('handleLoadMore called, page:', page)
+  
+  // 加载新数据
+  const res = await memberApi.getPublicMembers({
+    page,
+    pageSize: 10,
+    filters: {
+      gender: '',
+      ageStart: undefined,
+      ageEnd: undefined,
+      heightStart: undefined,
+      heightEnd: undefined,
+      education: '',
+      location: ''
     }
-  } catch (error) {
-    console.error('获取会员列表失败:', error)
-  } finally {
-    isLoading.value = false
+  })
+  
+  if (res.success) {
+    if (page === 1) {
+      memberList.value = res.data.list
+      // 保存到缓存
+      homeStore.setCachedData(activeTopTab.value, {
+        list: res.data.list,
+        total: res.data.total
+      })
+    } else {
+      memberList.value.push(...res.data.list)
+    }
+    total.value = res.data.total
   }
 }
 
 // 刷新数据
 const onRefresh = async () => {
   try {
-    await loadMembers()
+    await handleLoadMore(1)
   } catch (error) {
     console.error('刷新失败:', error)
   } finally {
@@ -259,79 +319,59 @@ const onRefresh = async () => {
   }
 }
 
-// 添加加载更多处理函数
-const handleLoadMore = async (page: number) => {
-  try {
-    const res = await memberApi.getPublicMembers({
-      page,
-      pageSize: 20,
-      filters: {
-        gender: '',
-        ageStart: undefined,
-        ageEnd: undefined,
-        heightStart: undefined,
-        heightEnd: undefined,
-        education: '',
-        location: ''
-      }
-    })
-    
-    if (res.success) {
-      memberList.value = [...memberList.value, ...res.data.list]
-      total.value = res.data.total
-    }
-    
-    // 等待一下，让 UI 有时间更新
-    await new Promise(resolve => setTimeout(resolve, 300))
-  } catch (error) {
-    console.error('加载更多会员失败:', error)
-  }
-}
-
-// 添加刷新处理函数
+// 修改刷新逻辑
 const handleRefresh = async () => {
   try {
-    const res = await memberApi.getPublicMembers({
-      page: 1,
-      pageSize: 20,
-      filters: {
-        gender: '',
-        ageStart: undefined,
-        ageEnd: undefined,
-        heightStart: undefined,
-        heightEnd: undefined,
-        education: '',
-        location: ''
-      }
-    })
-    
-    if (res.success) {
-      memberList.value = res.data.list
-      total.value = res.data.total
-    }
-  } catch (error) {
-    console.error('刷新会员列表失败:', error)
+    // 清除缓存
+    homeStore.clearCache(activeTopTab.value)
+    // 重新加载数据
+    await handleLoadMore(1)
+  } finally {
+    refreshing.value = false
   }
 }
 
-onMounted(async () => {
-  await loadMembers()
-  await checkRegistrationStatus()
-})
+// 格式化会员数据
+const formatMemberData = (data: any): Member => {
+  return {
+    id: data.member_no,
+    member_no: data.member_no,
+    avatar: data.avatar || '', // 设置为空字符串，让组件使用性别默认头像
+    nickname: data.nickname || '互助圈用户',
+    gender: data.gender || 'male',
+    city: data.city || '未知',
+    birthYear: data.birth_year || new Date().getFullYear(),
+    education: data.education || '',
+    job: data.occupation || '未知',
+    introduction: data.self_description || '',
+    childNeeds: [data.children_plan].filter(Boolean),
+    marriageNeeds: [data.marriage_cert].filter(Boolean),
+    updateTime: new Date(data.updated_at)
+  }
+}
+
+// 添加更新事件处理
+const handleMembersUpdate = (newMembers: Member[]) => {
+  memberList.value = newMembers
+}
+
+const handleTotalUpdate = (newTotal: number) => {
+  total.value = newTotal
+}
 </script>
 
 <style scoped>
 .page-container {
-  display: flex;
-  flex-direction: column;
-  min-height: 100%;
+  min-height: 100vh;
+  background: var(--app-background);
 }
 
 .content {
-  flex: 1;
-  overflow-y: auto;
-  -webkit-overflow-scrolling: touch;
-  padding: 0 16px 50px 16px; /* 添加左右内边距，保留底部内边距 */
+  height: calc(100vh - 50px); /* 减去底部导航栏高度 */
+  display: flex;
+  flex-direction: column;
+  padding: 0 16px;
+  overflow: hidden; /* 防止内容溢出 */
 }
 
 .tab-bar {
@@ -452,15 +492,10 @@ onMounted(async () => {
   background: #f5f5f5;
 }
 
-/* 添加骨架屏样式 */
-.skeleton-container {
-  padding: 16px;
-}
-
-.skeleton-container :deep(.van-skeleton) {
-  padding: 16px;
-  background: #fff;
-  border-radius: 8px;
-  margin-bottom: 12px;
+/* 确保滚动容器高度正确 */
+:deep(.tab-content) {
+  flex: 1;
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
 }
 </style> 

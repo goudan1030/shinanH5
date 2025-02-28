@@ -4,13 +4,14 @@
     @refresh="onRefresh"
     :disabled="!canRefresh"
   >
-    <div 
+    <!-- 内容区域 -->
+    <div
       class="tab-content" 
       ref="contentRef"
       @scroll="handleScroll"
     >
       <!-- Banner 区域 -->
-      <Banner :type="activeTab" />
+      <Banner :type="activeTab" :bannerData="bannerData" />
 
       <!-- 新人福利区域 - 只在"最新"标签页显示 -->
       <NewUserBenefit v-if="showBenefit" />
@@ -88,7 +89,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, onMounted, onUnmounted, watch } from 'vue'
+import { ref, computed, onMounted, onUnmounted, watch, onActivated, onDeactivated, nextTick } from 'vue'
 import { 
   Loading as VanLoading,
   PullRefresh as VanPullRefresh,
@@ -103,20 +104,57 @@ import { throttle } from 'lodash-es'
 import { bannerApi } from '@/api/banner'
 import { articleApi } from '@/api/article'
 import type { Article } from '@/types/article'
+import { useHomeStore } from '@/stores/home'
 
 // 添加下拉刷新相关状态
 const refreshing = ref(false)
 const contentRef = ref<HTMLElement | null>(null)
 
 // 添加滚动相关状态
-const scrollTop = ref(0)
-const canRefresh = computed(() => scrollTop.value === 0)
+const scrollPosition = ref(0)
+const canRefresh = computed(() => scrollPosition.value === 0)
 
-// 处理滚动事件
-const handleScroll = (e: Event) => {
-  const target = e.target as HTMLElement
-  scrollTop.value = target.scrollTop
+// 添加滚动位置管理
+const SCROLL_KEY = 'TAB_SCROLL_POSITIONS'
+
+const scrollManager = {
+  // 保存滚动位置
+  save(tab: string, position: number) {
+    try {
+      const positions = JSON.parse(sessionStorage.getItem(SCROLL_KEY) || '{}')
+      positions[tab] = position
+      sessionStorage.setItem(SCROLL_KEY, JSON.stringify(positions))
+      console.log('保存滚动位置:', tab, position)
+    } catch (error) {
+      console.error('保存滚动位置失败:', error)
+    }
+  },
+
+  // 获取滚动位置
+  get(tab: string): number {
+    try {
+      const positions = JSON.parse(sessionStorage.getItem(SCROLL_KEY) || '{}')
+      return positions[tab] || 0
+    } catch (error) {
+      console.error('获取滚动位置失败:', error)
+      return 0
+    }
+  },
+
+  // 清除指定标签的滚动位置
+  clear(tab: string) {
+    try {
+      const positions = JSON.parse(sessionStorage.getItem(SCROLL_KEY) || '{}')
+      delete positions[tab]
+      sessionStorage.setItem(SCROLL_KEY, JSON.stringify(positions))
+    } catch (error) {
+      console.error('清除滚动位置失败:', error)
+    }
+  }
 }
+
+// 添加一个变量来记录实际的滚动位置
+const lastScrollPosition = ref<Record<string, number>>({})
 
 // 修改 props 和 emits 定义
 interface Props {
@@ -126,7 +164,7 @@ interface Props {
 }
 
 const props = defineProps<Props>()
-const emit = defineEmits(['load', 'refresh'])
+const emit = defineEmits(['load', 'refresh', 'update:members', 'update:total'])
 
 const PAGE_SIZE = 10
 const currentPage = ref(1)
@@ -181,34 +219,198 @@ const throttledLoad = throttle(async () => {
   }
 }, 1000, { leading: true, trailing: false }) // 1秒内只触发一次，立即执行
 
-// 修改观察器配置
+// 修改滚动事件处理
+const handleScroll = throttle((e: Event) => {
+  const target = e.target as HTMLElement
+  if (target?.scrollTop !== undefined) {
+    const position = target.scrollTop
+    // 保存到内存中
+    lastScrollPosition.value[props.activeTab] = position
+    scrollPosition.value = position
+    // 实时保存到 sessionStorage
+    scrollManager.save(props.activeTab, position)
+    console.log('保存滚动位置:', props.activeTab, position)
+  }
+}, 100, { leading: true, trailing: true })
+
+// 修改生命周期钩子
 onMounted(() => {
+  // 设置 Intersection Observer
   observer.value = new IntersectionObserver(async (entries) => {
     const target = entries[0]
-    if (target.isIntersecting) {
-      throttledLoad()
+    if (target.isIntersecting && !isLoading.value) {
+      if (props.activeTab === 'news') {
+        // 加载更多文章
+        if (!isArticleFinished.value) {
+          await loadArticles(articlePage.value + 1)
+        }
+      } else {
+        // 加载更多会员
+        if (!isFinished.value) {
+          await throttledLoad()
+        }
+      }
     }
   }, {
     threshold: 0.1,
-    rootMargin: '100px 0px' // 提前 100px 触发加载
+    rootMargin: '100px 0px'
   })
 
   if (loadingTrigger.value) {
     observer.value.observe(loadingTrigger.value)
   }
 
-  loadBanners()
-  loadArticles()
+  // 直接加载数据，不再使用缓存控制器
+  loadData()
 })
 
-// 在组件卸载时清理
-onUnmounted(() => {
-  if (observer.value) {
-    observer.value.disconnect()
+// 修改滚动位置恢复逻辑
+const restoreScrollPosition = () => {
+  const position = scrollManager.get(props.activeTab)
+  console.log('尝试恢复滚动位置:', props.activeTab, position)
+  
+  if (position > 0 && contentRef.value) {
+    // 使用 nextTick 确保 DOM 更新后再设置滚动位置
+    nextTick(() => {
+      if (contentRef.value) {
+        contentRef.value.scrollTop = position
+        // 同时更新内存中的记录
+        lastScrollPosition.value[props.activeTab] = position
+        console.log('恢复滚动位置成功:', position)
+        
+        // 再次确认滚动位置
+        setTimeout(() => {
+          if (contentRef.value && contentRef.value.scrollTop !== position) {
+            contentRef.value.scrollTop = position
+            console.log('再次校正滚动位置:', position)
+          }
+        }, 100)
+      }
+    })
   }
-  // 取消未执行的节流函数
-  throttledLoad.cancel()
+}
+
+// 修改生命周期钩子
+onActivated(() => {
+  console.log('组件激活')
+  
+  // 先恢复滚动位置
+  restoreScrollPosition()
+  
+  // 数据加载完成后再次确认滚动位置
+  loadData().then(() => {
+    nextTick(() => {
+      restoreScrollPosition()
+    })
+  })
 })
+
+onDeactivated(() => {
+  console.log('组件失活')
+  // 使用最后记录的有效滚动位置
+  const position = lastScrollPosition.value[props.activeTab]
+  if (position !== undefined) {
+    scrollManager.save(props.activeTab, position)
+    console.log('保存最后的有效滚动位置:', props.activeTab, position)
+  }
+})
+
+const homeStore = useHomeStore()
+
+// 添加 Banner 数据类型定义
+const bannerData = ref<{
+  latest: Banner[]
+  hot: Banner[]
+  popup: Banner[]
+}>({
+  latest: [],
+  hot: [],
+  popup: []
+})
+
+// 修改 banner 加载函数
+const loadBanners = async () => {
+  // 检查缓存
+  if (homeStore.bannerCache.data && 
+      Date.now() - homeStore.bannerCache.timestamp < 5 * 60 * 1000) {
+    console.log('使用缓存的 banner 数据')
+    bannerData.value = homeStore.bannerCache.data
+    return
+  }
+
+  console.log('从数据库加载 banner 数据')
+  const res = await bannerApi.getBanners()
+  if (res.success) {
+    bannerData.value = res.data
+    // 保存到缓存
+    homeStore.setBannerCache(res.data)
+  }
+}
+
+// 修改刷新处理
+const onRefresh = async () => {
+  if (!canRefresh.value) {
+    refreshing.value = false
+    return
+  }
+
+  try {
+    // 清除缓存
+    homeStore.clearBannerCache()
+    // 重新加载数据
+    await loadData()
+    // 触发外部刷新事件
+    await emit('refresh')
+  } finally {
+    refreshing.value = false
+  }
+}
+
+// 修改数据加载函数
+const loadData = async () => {
+  try {
+    isLoading.value = true
+    
+    // 并行加载数据以提高速度
+    const promises = []
+    
+    if (props.activeTab !== 'news') {
+      promises.push(loadBanners())  // 每次都重新加载 banner
+    }
+    
+    if (props.activeTab === 'news') {
+      promises.push(loadArticles(1))
+    }
+    
+    await Promise.all(promises)
+    
+    // 重置页码
+    currentPage.value = 1
+  } finally {
+    isLoading.value = false
+  }
+}
+
+// 加载文章列表
+const loadArticles = async (page = 1) => {
+  try {
+    const res = await articleApi.getArticles({
+      page,
+      pageSize: 10
+    })
+    if (res.success) {
+      if (page === 1) {
+        articles.value = res.data.list
+      } else {
+        articles.value.push(...res.data.list)
+      }
+      articleTotal.value = res.data.total
+      articlePage.value = page
+    }
+  } catch (error) {
+    console.error('获取文章失败:', error)
+  }
+}
 
 // 修改映射函数以匹配数据库中的实际值
 const getEducationLabel = (education: string) => {
@@ -242,64 +444,14 @@ const getMarriageCertLabel = (cert: string) => {
   return map[cert] || cert
 }
 
-// 下拉刷新处理函数
-const onRefresh = async () => {
-  if (!canRefresh.value) {
-    refreshing.value = false
-    return
+// 在组件卸载时清理
+onUnmounted(() => {
+  if (observer.value) {
+    observer.value.disconnect()
   }
-
-  try {
-    // 重置页码
-    currentPage.value = 1
-    // 触发外部刷新事件
-    await emit('refresh')
-  } finally {
-    refreshing.value = false
-  }
-}
-
-// 获取banner数据
-const loadBanners = async () => {
-  try {
-    const res = await bannerApi.getBanners()
-    if (res.success) {
-      console.log('=== Banner数据 ===')
-      console.log('最新Banner:', res.data.latest)
-      console.log('热门Banner:', res.data.hot)
-      console.log('弹窗Banner:', res.data.popup)
-    }
-  } catch (error) {
-    console.error('获取Banner失败:', error)
-  }
-}
-
-// 加载文章列表
-const loadArticles = async (page = 1) => {
-  try {
-    const res = await articleApi.getArticles({
-      page,
-      pageSize: 10
-    })
-    if (res.success) {
-      if (page === 1) {
-        articles.value = res.data.list
-      } else {
-        articles.value.push(...res.data.list)
-      }
-      articleTotal.value = res.data.total
-      articlePage.value = page
-    }
-  } catch (error) {
-    console.error('获取文章失败:', error)
-  }
-}
-
-// 在初始化和切换到新闻tab时加载文章
-watch(() => props.activeTab, (newTab) => {
-  if (newTab === 'news') {
-    loadArticles()
-  }
+  // 取消未执行的节流函数
+  throttledLoad.cancel()
+  handleScroll.cancel()
 })
 </script>
 
